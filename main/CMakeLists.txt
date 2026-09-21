@@ -1,0 +1,22 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "rain_sensor.c"
+        "pump_control.c"
+        "storage_manager.c"
+        "wifi_ap.c"
+        "web_server.c"
+    INCLUDE_DIRS
+        "."
+    EMBED_FILES
+        "web/index.html"
+    REQUIRES
+        nvs_flash
+        esp_wifi
+        esp_http_server
+        mdns
+        esp_adc
+        driver
+        esp_timer
+        esp_netif
+)

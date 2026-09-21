@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LushGate - 太陽光自動散水管理</title>
+  <style>
+    :root {
+      --bg-gradient: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+      --card-bg: rgba(255, 255, 255, 0.08);
+      --card-border: rgba(255, 255, 255, 0.15);
+      --primary: #10b981;
+      --primary-hover: #059669;
+      --accent: #06b6d4;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: var(--bg-gradient); color: var(--text); min-height: 100vh; padding: 12px; }
+    .container { max-width: 760px; margin: 0 auto; }
+    header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: var(--card-bg); backdrop-filter: blur(10px); border-radius: 16px; border: 1px solid var(--card-border); margin-bottom: 16px; }
+    .logo { display: flex; align-items: center; gap: 8px; font-size: 1.25rem; font-weight: 700; color: var(--primary); }
+    .nav-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 16px; }
+    .tab-btn { background: var(--card-bg); border: 1px solid var(--card-border); color: var(--text-muted); padding: 10px 4px; border-radius: 12px; font-size: 0.85rem; font-weight: 600; cursor: pointer; text-align: center; transition: all 0.2s; }
+    .tab-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); }
+    .card { background: var(--card-bg); backdrop-filter: blur(12px); border: 1px solid var(--card-border); border-radius: 16px; padding: 16px; margin-bottom: 16px; }
+    .card-title { font-size: 1.05rem; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; color: #fff; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .stat-box { background: rgba(0,0,0,0.2); padding: 12px; border-radius: 12px; text-align: center; border: 1px solid rgba(255,255,255,0.05); }
+    .stat-label { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px; }
+    .stat-val { font-size: 1.4rem; font-weight: 700; color: #fff; }
+    .progress-bar { background: rgba(255,255,255,0.1); height: 10px; border-radius: 5px; overflow: hidden; margin-top: 8px; }
+    .progress-fill { background: linear-gradient(90deg, var(--accent), var(--primary)); height: 100%; width: 0%; transition: width 0.4s; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 12px; border-radius: 12px; font-weight: 600; font-size: 0.95rem; border: none; cursor: pointer; transition: 0.2s; }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-accent { background: var(--accent); color: white; }
+    .btn-warning { background: var(--warning); color: #111; }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-secondary { background: rgba(255,255,255,0.15); color: white; }
+    .form-group { margin-bottom: 14px; }
+    label { display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 6px; }
+    input, select { width: 100%; padding: 10px 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--card-border); border-radius: 10px; color: #fff; font-size: 0.95rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    th, td { padding: 10px 8px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.08); }
+    th { color: var(--text-muted); font-weight: 600; }
+    .badge { display: inline-block; padding: 3px 8px; border-radius: 20px; font-size: 0.72rem; font-weight: 600; }
+    .badge-success { background: rgba(16,185,129,0.2); color: #34d399; border: 1px solid #10b981; }
+    .badge-skip { background: rgba(6,182,212,0.2); color: #38bdf8; border: 1px solid #06b6d4; }
+    .badge-manual { background: rgba(245,158,11,0.2); color: #fbbf24; border: 1px solid #f59e0b; }
+    .badge-err { background: rgba(239,68,68,0.2); color: #f87171; border: 1px solid #ef4444; }
+    .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(16,185,129,0.95); color: white; padding: 10px 20px; border-radius: 25px; font-size: 0.9rem; font-weight: 600; display: none; box-shadow: 0 4px 20px rgba(0,0,0,0.4); z-index: 1000; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo">🌱 LushGate</div>
+      <div>
+        <button class="btn btn-secondary" style="padding: 6px 12px; font-size: 0.8rem;" onclick="enterSleep()">💤 スリープへ</button>
+      </div>
+    </header>
+
+    <div class="nav-tabs">
+      <button class="tab-btn active" onclick="showTab('status')">📊 状況</button>
+      <button class="tab-btn" onclick="showTab('settings')">⚙️ 設定</button>
+      <button class="tab-btn" onclick="showTab('history')">📜 履歴</button>
+      <button class="tab-btn" onclick="showTab('manual')">🔧 テスト</button>
+    </div>
+
+    <!-- TAB 1: STATUS & TIME SYNC -->
+    <div id="tab-status" class="tab-content">
+      <div class="card">
+        <div class="card-title">
+          <span>🕒 内部RTC日時</span>
+          <span id="rtc-time-badge" style="font-size:0.8rem; color:var(--text-muted)">--:--:--</span>
+        </div>
+        <div class="stat-val" id="disp-rtc-time" style="font-size: 1.6rem; text-align: center; margin: 10px 0;">--/--/-- --:--:--</div>
+        <button class="btn btn-accent" onclick="syncTimeWithPhone()">📱 スマホ時刻と同期 (1タップ補正)</button>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🌧️ 降雨・散水状況</div>
+        <div class="grid-2">
+          <div class="stat-box">
+            <div class="stat-label">本日累積降雨</div>
+            <div class="stat-val" id="disp-rain-accum">0 <span style="font-size:0.9rem">分</span></div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">雨量判定閾値</div>
+            <div class="stat-val" id="disp-rain-thresh">60 <span style="font-size:0.9rem">分</span></div>
+          </div>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="rain-progress"></div>
+        </div>
+        <div style="display:flex; justify-content:space-between; margin-top:12px; font-size:0.85rem;">
+          <span>センサー状態: <b id="disp-sensor-status">--</b></span>
+          <span>生電圧: <b id="disp-sensor-mv">-- mV</b></span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">⏰ 次回散水判定</div>
+        <div style="font-size: 0.95rem; line-height: 1.6;">
+          判定予定: <b id="disp-sched-time">毎朝 07:00</b><br>
+          判定基準: 過去24h累積降雨が閾値未満なら <b id="disp-sched-duration">10分間</b> 自動散水
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: SETTINGS (NVS) -->
+    <div id="tab-settings" class="tab-content" style="display:none;">
+      <div class="card">
+        <div class="card-title">⚙️ 散水・スリープ設定 (NV保存)</div>
+        <div class="grid-2">
+          <div class="form-group">
+            <label>散水判定時刻 (時:分)</label>
+            <div style="display:flex; gap:6px;">
+              <input type="number" id="cfg-hour" min="0" max="23" placeholder="7">
+              <input type="number" id="cfg-min" min="0" max="59" placeholder="0">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>雨監視周期 (分)</label>
+            <input type="number" id="cfg-sleep-min" min="1" max="15" placeholder="3">
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="form-group">
+            <label>散水スキップ降雨閾値 (分)</label>
+            <input type="number" id="cfg-rain-thresh" min="10" max="300" placeholder="60">
+          </div>
+          <div class="form-group">
+            <label>雨滴判定ADC閾値 (mV)</label>
+            <input type="number" id="cfg-adc-thresh" min="200" max="3000" placeholder="1500">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>ポンプ駆動デューティ制御</label>
+          <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:6px;">
+            <div>
+              <span style="font-size:0.75rem; color:var(--text-muted)">ON (秒)</span>
+              <input type="number" id="cfg-pump-on" min="10" max="600" placeholder="180">
+            </div>
+            <div>
+              <span style="font-size:0.75rem; color:var(--text-muted)">OFF (秒)</span>
+              <input type="number" id="cfg-pump-off" min="10" max="600" placeholder="120">
+            </div>
+            <div>
+              <span style="font-size:0.75rem; color:var(--text-muted)">総散水 (秒)</span>
+              <input type="number" id="cfg-pump-total" min="30" max="3600" placeholder="600">
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>APモード自動停止タイマー (秒)</label>
+          <input type="number" id="cfg-ap-timeout" min="60" max="1800" placeholder="300">
+        </div>
+
+        <button class="btn btn-primary" onclick="saveSettings()">💾 設定を保存 (NVS更新)</button>
+      </div>
+    </div>
+
+    <!-- TAB 3: HISTORY -->
+    <div id="tab-history" class="tab-content" style="display:none;">
+      <div class="card">
+        <div class="card-title">
+          <span>📜 散水履歴 (過去60回)</span>
+          <button class="btn btn-secondary" style="width:auto; padding:4px 10px; font-size:0.75rem;" onclick="loadHistory()">🔄 更新</button>
+        </div>
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>日時</th>
+                <th>24h降雨</th>
+                <th>判定結果</th>
+                <th>散水時間</th>
+              </tr>
+            </thead>
+            <tbody id="history-tbody">
+              <tr><td colspan="4" style="text-align:center;">履歴を読み込み中...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="grid-2" style="margin-top:16px;">
+          <a href="/api/history/csv" class="btn btn-accent" download="lushgate_history.csv" style="text-decoration:none;">📥 CSVダウンロード</a>
+          <button class="btn btn-danger" onclick="clearHistory()">🗑️ 履歴全消去</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 4: MANUAL TEST -->
+    <div id="tab-manual" class="tab-content" style="display:none;">
+      <div class="card">
+        <div class="card-title">🚿 ポンプ手動駆動テスト</div>
+        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:12px;">配線・リレー・水流確認用（指定時間で自動停止します）。</p>
+        <div class="grid-2">
+          <button class="btn btn-warning" onclick="testPump(30)">▶️ 30秒テスト散水</button>
+          <button class="btn btn-danger" onclick="stopPump()">⏹️ 即時停止</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🌧️ 雨センサー即時テスト</div>
+        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:12px;">極性反転パルス測定を即座に実行し、測定値を返します。</p>
+        <button class="btn btn-accent" onclick="testRainSensor()">🔄 センサー即時測定</button>
+        <div id="sensor-test-res" style="margin-top:10px; font-size:0.9rem; display:none;"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.innerText = msg;
+      t.style.display = 'block';
+      setTimeout(() => { t.style.display = 'none'; }, 2500);
+    }
+
+    function showTab(tabName) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
+      event.target.classList.add('active');
+      document.getElementById('tab-' + tabName).style.display = 'block';
+      if (tabName === 'history') loadHistory();
+      if (tabName === 'settings') loadSettings();
+    }
+
+    function formatEpoch(sec) {
+      if (!sec) return '--/--/-- --:--:--';
+      const d = new Date(sec * 1000);
+      return d.getFullYear() + '/' + 
+             String(d.getMonth() + 1).padStart(2, '0') + '/' + 
+             String(d.getDate()).padStart(2, '0') + ' ' + 
+             String(d.getHours()).padStart(2, '0') + ':' + 
+             String(d.getMinutes()).padStart(2, '0') + ':' + 
+             String(d.getSeconds()).padStart(2, '0');
+    }
+
+    async function fetchStatus() {
+      try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        document.getElementById('disp-rtc-time').innerText = formatEpoch(data.time);
+        document.getElementById('disp-rain-accum').innerText = data.rain_accum_min;
+        document.getElementById('disp-rain-thresh').innerText = data.rain_thresh_min;
+        const pct = Math.min(100, Math.round((data.rain_accum_min / data.rain_thresh_min) * 100));
+        document.getElementById('rain-progress').style.width = pct + '%';
+        document.getElementById('disp-sensor-status').innerText = data.is_raining ? '🌧️ 降雨検知' : '☀️ 乾燥中';
+        document.getElementById('disp-sensor-status').style.color = data.is_raining ? '#38bdf8' : '#34d399';
+        document.getElementById('disp-sensor-mv').innerText = data.sensor_mv + ' mV';
+        document.getElementById('disp-sched-time').innerText = `毎朝 ${String(data.sched_hour).padStart(2,'0')}:${String(data.sched_min).padStart(2,'0')}`;
+        document.getElementById('disp-sched-duration').innerText = Math.round(data.pump_total_sec / 60) + '分間';
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function syncTimeWithPhone() {
+      const nowEpoch = Math.floor(Date.now() / 1000);
+      try {
+        const res = await fetch('/api/time', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ epoch: nowEpoch })
+        });
+        if (res.ok) {
+          showToast('✅ スマホ時刻とRTCを同期しました');
+          fetchStatus();
+        }
+      } catch (e) {
+        alert('同期に失敗しました');
+      }
+    }
+
+    async function loadSettings() {
+      try {
+        const res = await fetch('/api/config');
+        const cfg = await res.json();
+        document.getElementById('cfg-hour').value = cfg.sched_hour;
+        document.getElementById('cfg-min').value = cfg.sched_min;
+        document.getElementById('cfg-sleep-min').value = Math.round(cfg.sleep_interval_sec / 60);
+        document.getElementById('cfg-rain-thresh').value = cfg.rain_thresh_min;
+        document.getElementById('cfg-adc-thresh').value = cfg.adc_thresh_mv;
+        document.getElementById('cfg-pump-on').value = cfg.pump_on_sec;
+        document.getElementById('cfg-pump-off').value = cfg.pump_off_sec;
+        document.getElementById('cfg-pump-total').value = cfg.pump_total_sec;
+        document.getElementById('cfg-ap-timeout').value = cfg.ap_timeout_sec;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function saveSettings() {
+      const payload = {
+        sched_hour: parseInt(document.getElementById('cfg-hour').value),
+        sched_min: parseInt(document.getElementById('cfg-min').value),
+        sleep_interval_sec: parseInt(document.getElementById('cfg-sleep-min').value) * 60,
+        rain_thresh_min: parseInt(document.getElementById('cfg-rain-thresh').value),
+        adc_thresh_mv: parseInt(document.getElementById('cfg-adc-thresh').value),
+        pump_on_sec: parseInt(document.getElementById('cfg-pump-on').value),
+        pump_off_sec: parseInt(document.getElementById('cfg-pump-off').value),
+        pump_total_sec: parseInt(document.getElementById('cfg-pump-total').value),
+        ap_timeout_sec: parseInt(document.getElementById('cfg-ap-timeout').value),
+      };
+      try {
+        const res = await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          showToast('💾 設定をNVSに保存しました');
+        }
+      } catch (e) {
+        alert('設定保存に失敗しました');
+      }
+    }
+
+    async function loadHistory() {
+      const tbody = document.getElementById('history-tbody');
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">履歴を読み込み中...</td></tr>';
+      try {
+        const res = await fetch('/api/history');
+        const list = await res.json();
+        if (list.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">履歴はありません</td></tr>';
+          return;
+        }
+        let html = '';
+        list.forEach(item => {
+          let badge = '<span class="badge badge-success">散水実行</span>';
+          if (item.result === 1) badge = '<span class="badge badge-skip">雨スキップ</span>';
+          else if (item.result === 2) badge = '<span class="badge badge-manual">手動</span>';
+          else if (item.result === 3) badge = '<span class="badge badge-err">異常</span>';
+
+          html += `<tr>
+            <td>${formatEpoch(item.timestamp)}</td>
+            <td>${item.rain_accum_min} 分</td>
+            <td>${badge}</td>
+            <td>${Math.round(item.pump_run_sec / 60)} 分</td>
+          </tr>`;
+        });
+        tbody.innerHTML = html;
+      } catch (e) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--danger)">取得失敗</td></tr>';
+      }
+    }
+
+    async function clearHistory() {
+      if (!confirm('散水履歴を全て消去しますか？')) return;
+      try {
+        await fetch('/api/history/clear', { method: 'POST' });
+        showToast('🗑️ 履歴を消去しました');
+        loadHistory();
+      } catch (e) { alert('消去に失敗しました'); }
+    }
+
+    async function testPump(sec) {
+      try {
+        await fetch('/api/pump/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'start', duration_sec: sec })
+        });
+        showToast(`🚿 ポンプを${sec}秒間テスト駆動中`);
+      } catch (e) { alert('テスト実行失敗'); }
+    }
+
+    async function stopPump() {
+      try {
+        await fetch('/api/pump/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'stop' })
+        });
+        showToast('⏹️ ポンプを停止しました');
+      } catch (e) { alert('停止失敗'); }
+    }
+
+    async function testRainSensor() {
+      const el = document.getElementById('sensor-test-res');
+      el.style.display = 'block';
+      el.innerText = '測定中...';
+      try {
+        const res = await fetch('/api/status');
+        const d = await res.json();
+        el.innerHTML = `測定電圧: <b>${d.sensor_mv} mV</b> (判定: <b>${d.is_raining ? '🌧️ 降雨' : '☀️ 乾燥'}</b>, 生ADC: ${d.sensor_raw})`;
+      } catch (e) { el.innerText = '測定失敗'; }
+    }
+
+    async function enterSleep() {
+      if (!confirm('APモードを終了し、低消費電力スリープ運用へ移行しますか？')) return;
+      try {
+        await fetch('/api/system/sleep', { method: 'POST' });
+        document.body.innerHTML = '<div style="text-align:center; padding:50px; font-size:1.2rem;">💤 スリープモードへ移行しました。<br>Wi-Fiを切断して終了してください。</div>';
+      } catch (e) { alert('移行要求失敗'); }
+    }
+
+    setInterval(fetchStatus, 3000);
+    fetchStatus();
+  </script>
+</body>
+</html>

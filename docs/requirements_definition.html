@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LushGate システム要件定義書</title>
+  <style>
+    :root {
+      --primary-color: #0f766e;
+      --primary-light: #f0fdfa;
+      --primary-dark: #115e59;
+      --accent-color: #0284c7;
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --border-color: #cbd5e1;
+      --bg-page: #f8fafc;
+      --card-bg: #ffffff;
+      --badge-req: #e0f2fe;
+      --badge-req-text: #0369a1;
+      --badge-opt: #fef3c7;
+      --badge-opt-text: #b45309;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "BIZ UDPGothic", Meiryo, sans-serif;
+      color: var(--text-main);
+      background-color: var(--bg-page);
+      line-height: 1.7;
+      font-size: 15px;
+      padding: 30px 15px;
+    }
+
+    .doc-container {
+      max-width: 960px;
+      margin: 0 auto;
+      background: var(--card-bg);
+      padding: 50px 60px;
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+      border: 1px solid var(--border-color);
+    }
+
+    /* Header & Cover */
+    .doc-header {
+      border-bottom: 3px double var(--primary-color);
+      padding-bottom: 25px;
+      margin-bottom: 35px;
+    }
+    .doc-title {
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--primary-dark);
+      margin-bottom: 6px;
+      letter-spacing: 0.5px;
+    }
+    .doc-subtitle {
+      font-size: 16px;
+      color: var(--text-muted);
+      font-weight: 500;
+      margin-bottom: 20px;
+    }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+      font-size: 13px;
+      background: var(--bg-page);
+      padding: 15px 20px;
+      border-radius: 6px;
+      border-left: 4px solid var(--primary-color);
+    }
+    .meta-item { display: flex; }
+    .meta-label { width: 100px; color: var(--text-muted); font-weight: 600; }
+    .meta-val { color: var(--text-main); font-weight: 500; }
+
+    /* Approval Box */
+    .approval-table {
+      width: 100%;
+      margin-top: 25px;
+      margin-bottom: 35px;
+      border-collapse: collapse;
+    }
+    .approval-table th, .approval-table td {
+      border: 1px solid var(--border-color);
+      text-align: center;
+      padding: 8px;
+      font-size: 13px;
+    }
+    .approval-table th {
+      background: var(--primary-light);
+      color: var(--primary-dark);
+      font-weight: 600;
+    }
+    .approval-stamp-box {
+      height: 65px;
+      vertical-align: middle;
+      color: #94a3b8;
+      font-size: 12px;
+    }
+
+    /* Headings */
+    h2 {
+      font-size: 20px;
+      color: var(--primary-dark);
+      border-left: 5px solid var(--primary-color);
+      padding-left: 12px;
+      margin-top: 40px;
+      margin-bottom: 18px;
+      background: linear-gradient(to right, var(--primary-light), transparent);
+      padding-top: 6px;
+      padding-bottom: 6px;
+    }
+    h3 {
+      font-size: 16px;
+      color: var(--text-main);
+      margin-top: 24px;
+      margin-bottom: 12px;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 4px;
+    }
+
+    p, ul, ol { margin-bottom: 14px; }
+    ul, ol { padding-left: 24px; }
+    li { margin-bottom: 6px; }
+
+    /* Tables */
+    table.spec-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0 24px;
+      font-size: 13.5px;
+    }
+    table.spec-table th, table.spec-table td {
+      border: 1px solid var(--border-color);
+      padding: 10px 12px;
+      text-align: left;
+    }
+    table.spec-table th {
+      background: #f1f5f9;
+      color: #334155;
+      font-weight: 600;
+    }
+    table.spec-table tr:nth-child(even) {
+      background: #fafafa;
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .badge-must { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
+    .badge-should { background: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc; }
+    .badge-opt { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
+
+    /* Diagram & Boxes */
+    .diagram-box {
+      background: #0f172a;
+      color: #38bdf8;
+      padding: 20px;
+      border-radius: 8px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12.5px;
+      line-height: 1.5;
+      overflow-x: auto;
+      margin: 18px 0;
+      white-space: pre;
+    }
+
+    .notice-card {
+      background: var(--primary-light);
+      border: 1px solid #99f6e4;
+      border-left: 4px solid var(--primary-color);
+      padding: 14px 18px;
+      border-radius: 6px;
+      margin: 18px 0;
+      font-size: 13.5px;
+    }
+
+    .screen-mock {
+      background: #1e293b;
+      color: #f8fafc;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 16px 0;
+      border: 1px solid #334155;
+    }
+    .mock-header {
+      display: flex;
+      justify-content: space-between;
+      border-bottom: 1px solid #475569;
+      padding-bottom: 10px;
+      margin-bottom: 12px;
+      font-weight: bold;
+      color: #10b981;
+    }
+    .mock-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .mock-card {
+      background: rgba(255, 255, 255, 0.07);
+      padding: 12px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    /* Print settings */
+    @media print {
+      body { background: #fff; padding: 0; font-size: 12pt; }
+      .doc-container { box-shadow: none; border: none; padding: 0; max-width: 100%; }
+      h2 { page-break-after: avoid; }
+      table, .diagram-box, .screen-mock { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="doc-container">
+
+  <!-- Document Header -->
+  <div class="doc-header">
+    <div class="doc-title">システム要件定義書</div>
+    <div class="doc-subtitle">山間部・露地畑向け 自律型自動散水制御システム「LushGate (ラッシュゲート)」</div>
+    
+    <div class="meta-grid">
+      <div class="meta-item"><span class="meta-label">文書番号:</span><span class="meta-val">LG-REQ-2026-001</span></div>
+      <div class="meta-item"><span class="meta-label">初版作成日:</span><span class="meta-val">2026年09月21日</span></div>
+      <div class="meta-item"><span class="meta-label">版数:</span><span class="meta-val">第 1.0 版</span></div>
+      <div class="meta-item"><span class="meta-label">対象システム:</span><span class="meta-val">ESP32-C3 LushGate Controller</span></div>
+      <div class="meta-item"><span class="meta-label">作成担当:</span><span class="meta-val">システム開発チーム</span></div>
+      <div class="meta-item"><span class="meta-label">承認状況:</span><span class="meta-val">客先承認申請中</span></div>
+    </div>
+  </div>
+
+  <!-- Client Approval Section -->
+  <table class="approval-table">
+    <thead>
+      <tr>
+        <th style="width: 25%;">ご承認（お客様）</th>
+        <th style="width: 25%;">ご査閲（お客様）</th>
+        <th style="width: 25%;">開発責任者</th>
+        <th style="width: 25%;">設計担当者</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="approval-stamp-box">（認印 / サイン）<br><span style="font-size:11px;">日付: &nbsp; &nbsp; 年 &nbsp; 月 &nbsp; 日</span></td>
+        <td class="approval-stamp-box">（認印 / サイン）<br><span style="font-size:11px;">日付: &nbsp; &nbsp; 年 &nbsp; 月 &nbsp; 日</span></td>
+        <td class="approval-stamp-box">（承認印）<br><span style="font-size:11px;">2026/09/21</span></td>
+        <td class="approval-stamp-box">（作成印）<br><span style="font-size:11px;">2026/09/21</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 1. 背景と目的 -->
+  <h2>1. システム開発の背景と目的</h2>
+  <p>
+    本システム「<strong>LushGate（ラッシュゲート）</strong>」は、商用電源やWi-Fiインフラが存在しない山間部・露地畑（約2坪）において、<strong>太陽光発電＋バッテリー駆動で完全自律稼働する自動散水システム</strong>です。
+  </p>
+  <p>
+    複雑・高価な土壌水分センサーの導入を避け、「<strong>直近24時間の降雨実績が一定基準に満たない日のみ散水を行う</strong>」という明快な制御ロジックを採用します。
+    現場での保守・設定変更時には、スマートフォンと1対1で接続できる<strong>オンデマンドWi-Fi AP & mDNS Web UI</strong>を提供し、使いやすさと超低消費電力運用の両立を実現します。
+  </p>
+
+  <!-- 2. システム全体構成 -->
+  <h2>2. システム全体構成</h2>
+  <p>システムは以下の電源系・制御系・駆動系・センサー系で構成されます。</p>
+
+  <div class="diagram-box">
+【ソーラー電源系】
+  [ 太陽光パネル 10W ] ──> [ 充放電コントローラ ] ──> [ LiFePO4 バッテリー 12V 6Ah ]
+                                      │ (12V出力)
+                     ┌────────────────┴────────────────┐
+                     ▼                                 ▼
+           [ 3.3V DC-DC降圧 ]               [ 3.0V DC-DC降圧 / 電池 ]
+                     │                                 │
+                     ▼                                 │
+【制御系】     [ ESP32-C3 (3.3V給電) ] ──(3.3V駆動)──> [ フォトカプラ (1次側) ]
+                                                            │ (完全絶縁)
+                                                            ▼
+                                                [ 12V メカリレー (2次側: 12V系) ]
+               │       │                               │
+               │       ▼                               ▼
+【センサ・駆動】│  [ BOOTボタン/LED ]                  [ 灯油ポンプ 3V (200Lタンク) ]
+               ▼                                       │
+         [ 対称極性反転 雨センサー ]                   ▼
+                                                [ 畝ドリップ散水管 (畑2坪) ]
+  </div>
+
+  <!-- 3. 機能要件 -->
+  <h2>3. 機能要件一覧 (Functional Requirements)</h2>
+  <p>本システムで提供する全機能要件を以下に定めます。</p>
+
+  <table class="spec-table">
+    <thead>
+      <tr>
+        <th style="width: 12%;">要件ID</th>
+        <th style="width: 22%;">機能分類・名称</th>
+        <th style="width: 48%;">要件詳細仕様</th>
+        <th style="width: 10%;">重要度</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>FR-01</strong></td>
+        <td><strong>低消費電力雨量監視<br>(Deep Sleep)</strong></td>
+        <td>
+          ・設定されたスリープ周期（デフォルト3分、1〜15分で設定可）でDeep Sleepから復帰。<br>
+          ・電極A/Bに対して数msの極性反転パルスを印加しADC測定。<br>
+          ・閾値以上の導通を検知した場合、累積降雨時間（分）に加算して再びDeep Sleepへ移行。
+        </td>
+        <td><span class="badge badge-must">必須</span></td>
+      </tr>
+      <tr>
+        <td><strong>FR-02</strong></td>
+        <td><strong>散水判定＆<br>デューティ駆動</strong></td>
+        <td>
+          ・毎朝の設定時刻（デフォルト07:00、00:00〜23:59）に散水判定を実施。<br>
+          ・過去24h累積降雨が閾値（デフォルト60分）以上なら散水スキップ。<br>
+          ・閾値未満なら、ポンプの過熱防止のため「3分ON・2分OFF」デューティにて正味10分（実時間約17分）の自動散水を実施。<br>
+          ・判定・散水結果をNVS履歴へ記録し、カウンタをリセット。
+        </td>
+        <td><span class="badge badge-must">必須</span></td>
+      </tr>
+      <tr>
+        <td><strong>FR-03</strong></td>
+        <td><strong>オンデマンド<br>Wi-Fi SoftAP</strong></td>
+        <td>
+          ・常時Wi-FiはOFF（省電力）。現場で `BOOTボタン (GPIO9)` を2秒長押しすることでSoftAPを起動。<br>
+          ・SSID: `LushGate-XXXX`（MAC識別付き）、認証: オープンまたはWPA2。<br>
+          ・稼働中はオンボードLED（GPIO8）を点滅表示。
+        </td>
+        <td><span class="badge badge-must">必須</span></td>
+      </tr>
+      <tr>
+        <td><strong>FR-04</strong></td>
+        <td><strong>mDNS名前解決</strong></td>
+        <td>
+          ・IPアドレス（192.168.4.1）の直接入力不要で、ブラウザから <strong>`http://lushgate.local`</strong> でアクセス可能とする。
+        </td>
+        <td><span class="badge badge-must">必須</span></td>
+      </tr>
+      <tr>
+        <td><strong>FR-05</strong></td>
+        <td><strong>Webによる<br>1タップ時刻補正</strong></td>
+        <td>
+          ・Web UIダッシュボード上に「📱 スマホ時刻と同期」ボタンを配置。<br>
+          ・接続したスマホブラウザの現在時刻（UNIX Epoch）をPOST送信し、ESP32内蔵RTCを1タップで即時同期。
+        </td>
+        <td><span class="badge badge-must">必須</span></td>
+      </tr>
+      <tr>
+        <td><strong>FR-06</strong></td>
+        <td><strong>Web設定管理 &<br>NV（NVS）保存</strong></td>
+        <td>
+          ・散水時刻、監視周期、雨量スキップ閾値、ADC判定閾値、ポンプデューティ（ON/OFF/総時間）、APタイムアウトをWebフォームから変更可能。<br>
+          ・設定値はESP32内蔵NVS（不揮発性メモリ）へ保存し、電源断・Deep Sleep後も保持。
+        </td>
+        <td><span class="badge badge-must">必須</span></td>
+      </tr>
+      <tr>
+        <td><strong>FR-07</strong></td>
+        <td><strong>散水履歴のWeb参照 &<br>CSVダウンロード</strong></td>
+        <td>
+          ・過去60回分の判定結果（散水実施／雨スキップ／手動／異常）、24h雨量、実ポンプ駆動時間をNVSリングバッファに保存。<br>
+          ・Web上で一覧表示し、ボタン1つでCSVファイル（`lushgate_history.csv`）としてダウンロード可能。
+        </td>
+        <td><span class="badge badge-must">必須</span></td>
+      </tr>
+      <tr>
+        <td><strong>FR-08</strong></td>
+        <td><strong>手動散水テスト &<br>センサー即時測定</strong></td>
+        <td>
+          ・配線・水流テスト用に「30秒手動テスト散水（安全自動停止付き）」ボタンを提供。<br>
+          ・雨センサーの生電圧（mV）と判定状態をリアルタイムで画面上に取得・表示。
+        </td>
+        <td><span class="badge badge-should">推奨</span></td>
+      </tr>
+      <tr>
+        <td><strong>FR-09</strong></td>
+        <td><strong>AP自動タイムアウト<br>(バッテリー保護)</strong></td>
+        <td>
+          ・Web接続後、最後の操作から設定時間（デフォルト5分）無操作が続いた場合、または画面上の「スリープへ」ボタン押下時に自動でAPを停止しDeep Sleepへ復帰。
+        </td>
+        <td><span class="badge badge-must">必須</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 4. 非機能要件 -->
+  <h2>4. 非機能要件 (Non-Functional Requirements)</h2>
+  
+  <table class="spec-table">
+    <thead>
+      <tr>
+        <th style="width: 25%;">項目</th>
+        <th style="width: 75%;">要件詳細</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>消費電力・電源自律性</strong></td>
+        <td>
+          ・Deep Sleep待機時消費電流: 数十μAレベル（雨センサー待機電流は完全ゼロ）。<br>
+          ・1日あたりの消費電力量: 散水1回（10分稼働）含めて1Wh未満。<br>
+          ・10Wソーラーパネル＋12V 6Ah LiFePO4バッテリーにより、無日照が1週間以上続いても稼働を継続可能。
+        </td>
+      </tr>
+      <tr>
+        <td><strong>電極腐食対策 (高信頼性)</strong></td>
+        <td>
+          ・SUS製電極プレートに対し、サンプリング毎に印加極性（A→B / B→A）を反転させ電気分解を抑制。<br>
+          ・印加時間を1回あたり5ms以内とし、測定完了直後に両ピンを完全Hi-Z（浮動状態）にして直流印加を遮断。
+        </td>
+      </tr>
+      <tr>
+        <td><strong>電気的絶縁 & 給電設計</strong></td>
+        <td>
+          ・フォトカプラ入力側（一次側）は <strong>ESP32（3.3V系）から給電・信号駆動</strong> します。<br>
+          ・出力側（二次側の12Vリレーコイル電源および3Vポンプモータ電源）とは <strong>電源・GNDを含めて完全ガルバニック絶縁</strong> し、モータの逆起電力ノイズや電圧変動によるマイコンの誤動作・破損を確実に防止します。
+        </td>
+      </tr>
+      <tr>
+        <td><strong>データ保全性</strong></td>
+        <td>
+          ・設定値および散水履歴（過去60回分）はFlashメモリ（NVS領域）に保持され、バッテリー交換や完全放電時にもデータ消失しない設計。
+        </td>
+      </tr>
+      <tr>
+        <td><strong>対応端末</strong></td>
+        <td>
+          ・スマートフォン（iOS Safari, Android Chrome）およびPC（Windows, macOS）の主要Webブラウザに対応（レスポンシブSingle Page Web UI）。
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 5. ハードウェア I/O ピンアサイン仕様 -->
+  <h2>5. ハードウェア I/O ピンアサイン仕様</h2>
+  
+  <table class="spec-table">
+    <thead>
+      <tr>
+        <th>GPIO</th>
+        <th>機能識別名</th>
+        <th>I/O / 属性</th>
+        <th>論理</th>
+        <th>接続対象・用途</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>GPIO0</strong></td>
+        <td>`RAIN_SENSE_A`</td>
+        <td>ADC1_CH0 / InOut</td>
+        <td>アナログ/Hi-Z</td>
+        <td>極性反転雨センサー 電極プレートA</td>
+      </tr>
+      <tr>
+        <td><strong>GPIO1</strong></td>
+        <td>`RAIN_SENSE_B`</td>
+        <td>ADC1_CH1 / InOut</td>
+        <td>アナログ/Hi-Z</td>
+        <td>極性反転雨センサー 電極プレートB</td>
+      </tr>
+      <tr>
+        <td><strong>GPIO7</strong></td>
+        <td>`PUMP_CTRL`</td>
+        <td>Digital Output</td>
+        <td>Active High</td>
+        <td>フォトカプラ絶縁モジュール入力（リレーON）</td>
+      </tr>
+      <tr>
+        <td><strong>GPIO8</strong></td>
+        <td>`STATUS_LED`</td>
+        <td>Digital Output</td>
+        <td>Active Low</td>
+        <td>オンボードLED（APモード時点滅インジケータ）</td>
+      </tr>
+      <tr>
+        <td><strong>GPIO9</strong></td>
+        <td>`USER_BUTTON`</td>
+        <td>Digital Input</td>
+        <td>Active Low (Pull-up)</td>
+        <td>BOOTボタン（2秒長押しでWi-Fi AP起動）</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- 6. Web UI 画面仕様 -->
+  <h2>6. Web UI 画面仕様</h2>
+  <p>現場での操作性を重視した、1画面4タブ構成のレスポンシブWeb UIを提供します。</p>
+
+  <div class="screen-mock">
+    <div class="mock-header">
+      <span>🌱 LushGate コントローラ</span>
+      <span>[💤 スリープへ]</span>
+    </div>
+    <div style="font-size:12px; margin-bottom:10px; color:#cbd5e1;">[ 📊 状況 (選択中) ] &nbsp; [ ⚙️ 設定 ] &nbsp; [ 📜 履歴 ] &nbsp; [ 🔧 テスト ]</div>
+    
+    <div class="mock-grid">
+      <div class="mock-card">
+        <div style="font-size:11px; color:#94a3b8;">🕒 内部RTC日時</div>
+        <div style="font-size:16px; font-weight:bold; margin:4px 0;">2026/09/21 07:40:00</div>
+        <button style="background:#0284c7; color:#fff; border:none; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer;">📱 スマホ時刻と同期</button>
+      </div>
+      <div class="mock-card">
+        <div style="font-size:11px; color:#94a3b8;">🌧️ 本日累積降雨</div>
+        <div style="font-size:16px; font-weight:bold; margin:4px 0; color:#38bdf8;">15 分 <span style="font-size:11px; color:#94a3b8;">/ 閾値 60分</span></div>
+        <div style="font-size:11px; color:#10b981;">状態: ☀️ 乾燥中 (980 mV)</div>
+      </div>
+    </div>
+    
+    <div class="mock-card">
+      <div style="font-size:11px; color:#94a3b8;">⏰ 次回散水予定</div>
+      <div style="font-size:12px;">明日 07:00 判定 ── 降雨不足の場合、10分間（3分ON/2分OFF）散水実行</div>
+    </div>
+  </div>
+
+  <!-- 7. 納品物と検収基準 -->
+  <h2>7. 納品物および検収基準</h2>
+  
+  <h3>7.1 納品物一覧</h3>
+  <ol>
+    <li><strong>ESP32-C3 ファームウェア ソースコード一式</strong>（ESP-IDFプロジェクト / C言語・HTML5・CSS・JS）</li>
+    <li><strong>システム仕様書 & 取扱説明書</strong>（`README.md`）</li>
+    <li><strong>PC用動作確認モック環境</strong>（`tools/mock_web_server.py`）</li>
+    <li><strong>本システム要件定義書</strong>（`docs/requirements_definition.html`）</li>
+  </ol>
+
+  <h3>7.2 検収基準</h3>
+  <ul>
+    <li>[ ] BOOTボタン2秒長押しにより、Wi-Fi SoftAPおよびmDNS（`http://lushgate.local`）が起動すること。</li>
+    <li>[ ] スマホブラウザからWeb画面にアクセスし、「スマホ時刻と同期」でESP32 RTC日時が正常に補正されること。</li>
+    <li>[ ] Web画面から散水時刻・デューティ時間・閾値を変更し、再起動後も設定値が保持されていること（NVS保存確認）。</li>
+    <li>[ ] 雨センサーに水分を与えた際、測定電圧が上昇し「降雨検知」として積算されること。</li>
+    <li>[ ] 毎朝の判定時刻において、累積降雨60分以上の場合は散水スキップ、未満の場合はリレーがデューティ駆動（3分ON/2分OFF）すること。</li>
+    <li>[ ] 判定および散水結果がWeb画面の履歴テーブルに記録され、CSVファイルとして正常にダウンロードできること。</li>
+    <li>[ ] AP起動後、5分間の無操作で自動的にDeep Sleepへ安全に復帰すること。</li>
+  </ul>
+
+  <div class="notice-card" style="margin-top:30px;">
+    <strong>【お客様ご確認欄】</strong><br>
+    本書記載の要件定義内容をご確認いただき、ご承認の程よろしくお願い申し上げます。ご要望や修正事項がございましたらお申し付けください。
+  </div>
+
+</div>
+
+</body>
+</html>
