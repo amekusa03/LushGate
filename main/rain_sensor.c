@@ -13,19 +13,29 @@ static const char *TAG = "RAIN_SENSOR";
 static adc_oneshot_unit_handle_t s_adc_handle = NULL;
 static adc_cali_handle_t s_adc_cali_handle = NULL;
 static bool s_cali_enabled = false;
-static uint8_t s_last_polarity = 0; // 0: A->B, 1: B->A
 
 esp_err_t rain_sensor_init(void)
 {
-    // GPIO0 / GPIO1 をデフォルトで入力（Hi-Z、プルアップ/プルダウン無効）に設定
-    gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << PIN_RAIN_SENSE_A) | (1ULL << PIN_RAIN_SENSE_B),
+    // GPIO1 (給電制御ピン: VCC) を出力に設定、初期状態はOFF (LOW)
+    gpio_config_t pwr_conf = {
+        .pin_bit_mask = (1ULL << PIN_RAIN_POWER),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_ENABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&pwr_conf);
+    gpio_set_level(PIN_RAIN_POWER, 0);
+
+    // GPIO0 (OUT端子測定: ADC1_CH0) を入力（Hi-Z）に設定
+    gpio_config_t out_conf = {
+        .pin_bit_mask = (1ULL << PIN_RAIN_OUT),
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
     };
-    gpio_config(&io_conf);
+    gpio_config(&out_conf);
 
     if (s_adc_handle == NULL) {
         adc_oneshot_unit_init_cfg_t init_config = {
@@ -41,13 +51,12 @@ esp_err_t rain_sensor_init(void)
             .bitwidth = ADC_BITWIDTH_DEFAULT,
             .atten = ADC_ATTEN_DB_12, // 0 - ~3.1V 測定範囲
         };
-        adc_oneshot_config_channel(s_adc_handle, RAIN_ADC_CH_A, &chan_config);
-        adc_oneshot_config_channel(s_adc_handle, RAIN_ADC_CH_B, &chan_config);
+        adc_oneshot_config_channel(s_adc_handle, RAIN_ADC_CH, &chan_config);
 
 #if ADC_CALI_SCHEME_CURVE_FITTING_SUPPORTED
         adc_cali_curve_fitting_config_t cali_config = {
             .unit_id = RAIN_ADC_UNIT,
-            .chan = RAIN_ADC_CH_A,
+            .chan = RAIN_ADC_CH,
             .atten = ADC_ATTEN_DB_12,
             .bitwidth = ADC_BITWIDTH_DEFAULT,
         };
@@ -61,11 +70,13 @@ esp_err_t rain_sensor_init(void)
 
 void rain_sensor_power_down(void)
 {
-    // 両端子を完全Hi-Zにして待機時電位差・待機電流ゼロ化
-    gpio_set_direction(PIN_RAIN_SENSE_A, GPIO_MODE_INPUT);
-    gpio_set_direction(PIN_RAIN_SENSE_B, GPIO_MODE_INPUT);
-    gpio_set_pull_mode(PIN_RAIN_SENSE_A, GPIO_FLOATING);
-    gpio_set_pull_mode(PIN_RAIN_SENSE_B, GPIO_FLOATING);
+    // 給電ピンをOFFにし、端子を完全Hi-Zにして待機時電力および電解腐食を完全遮断
+    gpio_set_level(PIN_RAIN_POWER, 0);
+    gpio_set_direction(PIN_RAIN_POWER, GPIO_MODE_INPUT);
+    gpio_set_pull_mode(PIN_RAIN_POWER, GPIO_FLOATING);
+
+    gpio_set_direction(PIN_RAIN_OUT, GPIO_MODE_INPUT);
+    gpio_set_pull_mode(PIN_RAIN_OUT, GPIO_FLOATING);
 }
 
 esp_err_t rain_sensor_read(uint16_t threshold_mv, rain_sensor_result_t *result)
@@ -76,34 +87,22 @@ esp_err_t rain_sensor_read(uint16_t threshold_mv, rain_sensor_result_t *result)
         if (err != ESP_OK) return err;
     }
 
-    // サンプリング毎に極性を反転
-    s_last_polarity = (s_last_polarity == 0) ? 1 : 0;
-    result->polarity = s_last_polarity;
+    // 1. 給電ピン (GPIO1) を HIGH にして J3Y トランジスタ増幅回路にパルス給電
+    gpio_set_direction(PIN_RAIN_POWER, GPIO_MODE_OUTPUT);
+    gpio_set_level(PIN_RAIN_POWER, 1);
 
+    // 2. 電源立ち上がり・回路安定化待機 (5ms)
+    esp_rom_delay_us(5000);
+
+    // 3. J3Y エミッタ出力 (OUT端子: GPIO0) を ADC サンプリング
     int raw_val = 0;
-    int voltage_mv = 0;
+    adc_oneshot_read(s_adc_handle, RAIN_ADC_CH, &raw_val);
 
-    if (s_last_polarity == 0) {
-        // 極性1: A (GPIO0) = HIGH, B (GPIO1) = ADC測定
-        gpio_set_direction(PIN_RAIN_SENSE_A, GPIO_MODE_OUTPUT);
-        gpio_set_level(PIN_RAIN_SENSE_A, 1);
-        gpio_set_direction(PIN_RAIN_SENSE_B, GPIO_MODE_INPUT);
-
-        esp_rom_delay_us(5000); // 5ms パルス印加待機
-        adc_oneshot_read(s_adc_handle, RAIN_ADC_CH_B, &raw_val);
-    } else {
-        // 極性2: B (GPIO1) = HIGH, A (GPIO0) = ADC測定
-        gpio_set_direction(PIN_RAIN_SENSE_B, GPIO_MODE_OUTPUT);
-        gpio_set_level(PIN_RAIN_SENSE_B, 1);
-        gpio_set_direction(PIN_RAIN_SENSE_A, GPIO_MODE_INPUT);
-
-        esp_rom_delay_us(5000); // 5ms パルス印加待機
-        adc_oneshot_read(s_adc_handle, RAIN_ADC_CH_A, &raw_val);
-    }
-
-    // 測定直後に即時Hi-Zに戻して電極腐食・電力浪費を遮断
+    // 4. 測定完了後、即座に通電を遮断して待機電流ゼロ＆電極腐食を防止
     rain_sensor_power_down();
 
+    // 5. 電圧 (mV) への換算
+    int voltage_mv = 0;
     if (s_cali_enabled && s_adc_cali_handle) {
         adc_cali_raw_to_voltage(s_adc_cali_handle, raw_val, &voltage_mv);
     } else {
@@ -115,8 +114,8 @@ esp_err_t rain_sensor_read(uint16_t threshold_mv, rain_sensor_result_t *result)
     result->voltage_mv = (uint16_t)voltage_mv;
     result->is_raining = (result->voltage_mv >= threshold_mv);
 
-    ESP_LOGI(TAG, "Rain Sensor Read: Polarity=%d, Raw=%d, Volt=%dmV, IsRaining=%s (Thresh=%dmV)",
-             result->polarity, result->raw_adc, result->voltage_mv,
+    ESP_LOGI(TAG, "Rain Sensor (J3Y Amplified) Read: Raw=%d, Volt=%dmV, IsRaining=%s (Thresh=%dmV)",
+             result->raw_adc, result->voltage_mv,
              result->is_raining ? "YES" : "NO", threshold_mv);
 
     return ESP_OK;

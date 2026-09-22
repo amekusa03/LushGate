@@ -62,7 +62,7 @@ graph TD
     
     StepDown33 --> ESP32[ESP32-C3]
     
-    ESP32 -->|GPIO0 / GPIO1| RainSensor[Polarity-Reversing Rain Sensor]
+    ESP32 -->|GPIO0 (OUT) / GPIO1 (VCC)| RainSensor[J3Y Amplified Rain Sensor]
     ESP32 -->|GPIO7 / GND| OptoModule[Optocoupler Isolation Module]
     ESP32 -->|GPIO8| LED[Status LED]
     ESP32 -->|GPIO9| Button[BOOT Button / AP Launch]
@@ -74,31 +74,30 @@ graph TD
 
 ---
 
-### (1) Rain Sensor Circuit (Symmetric, Polarity-Reversing, Anti-Corrosion)
+### (1) Rain Sensor Circuit (J3Y NPN Current Amplification & Pulsed Power)
 
 ```
-                +3.3V (Internal High Output)
-                  |
-             [ GPIO0 (A) ]
-                  |
-                [ 1kΩ ] (Protection Resistor)
-                  |
-     +------------+------------+
-     |                         |
-  [ 100kΩ ] (Rref)         [Electrode Plate A] (Stainless Steel)
-     |                         :
-    GND                    (Raindrop R_rain)
-                               :
-                           [Electrode Plate B] (Stainless Steel)
-                               |
-     +------------+------------+
-     |                         |
-  [ 100kΩ ] (Rref)           [ 1kΩ ] (Protection Resistor)
-     |                         |
-    GND                   [ GPIO1 (B) ]
-                               |
-                              ADC Input
+                +5V / +3.3V (Pulsed Power: GPIO1)
+                     │
+         +-----------+----------------------+
+         │                                  │
+      [ 1kΩ ]                             [ 100Ω ]
+         │                                  │
+      [ LED1 ] (Power Indicator)     [ Power Line (Yellow) ]
+         │                                  : (Raindrop resistance R_rain)
+        GND                          [ Sense Line (Red) ]
+                                            │
+                                            │ (Base)
+                       +----------------[ J3Y (NPN) ]
+                       │ (Collector)        │ (Emitter)
+                  +----+                    ├───> [ OUT ] ──> ESP32 GPIO0 (ADC1_CH0)
+                  │                         │
+                 +5V / +3.3V             [ 100Ω ]
+                                            │
+                                           GND
 ```
+- **Signal Amplification**: NPN transistor (J3Y / S8050) amplifies minute conduction currents from raindrops on the sensor to produce a solid, detectable voltage across the 100Ω emitter resistor.
+- **Ultra-Low Power & Anti-Corrosion**: VCC power is supplied via ESP32-C3 **GPIO1** only during measurement (5ms pulse). During idle/Deep Sleep, power is cut and pins are held in High-Z, eliminating quiescent current and electrochemical corrosion.
 
 ---
 

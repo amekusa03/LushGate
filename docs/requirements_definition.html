@@ -291,7 +291,7 @@
                │       ▼                               ▼
 【センサ・駆動】│  [ BOOTボタン/LED ]                  [ 灯油ポンプ 3V (200Lタンク) ]
                ▼                                       │
-         [ 対称極性反転 雨センサー ]                   ▼
+         [ J3Y増幅 雨滴センサー ]                   ▼
                                                 [ 畝ドリップ散水管 (畑2坪) ]
   </div>
 
@@ -314,7 +314,7 @@
         <td><strong>低消費電力雨量監視<br>(Deep Sleep)</strong></td>
         <td>
           ・設定されたスリープ周期（デフォルト3分、1〜15分で設定可）でDeep Sleepから復帰。<br>
-          ・電極A/Bに対して数msの極性反転パルスを印加しADC測定。<br>
+          ・GPIO1からJ3Y増幅回路に数msのパルス給電を行い、OUT端子(GPIO0)をADC測定。<br>
           ・閾値以上の導通を検知した場合、累積降雨時間（分）に加算して再びDeep Sleepへ移行。
         </td>
         <td><span class="badge badge-must">必須</span></td>
@@ -424,8 +424,9 @@
       <tr>
         <td><strong>電気的絶縁 & 給電設計</strong></td>
         <td>
-          ・フォトカプラ入力側（一次側）は <strong>ESP32（3.3V系）から給電・信号駆動</strong> します。<br>
-          ・出力側（二次側の12Vリレーコイル電源および3Vポンプモータ電源）とは <strong>電源・GNDを含めて完全ガルバニック絶縁</strong> し、モータの逆起電力ノイズや電圧変動によるマイコンの誤動作・破損を確実に防止します。
+          ・<strong>ESP32制御系</strong>: ソーラー発電機の <strong>5V USB出力</strong> から直接給電（降圧コンバータ不要・USB直結）。<br>
+          ・<strong>ポンプ駆動系</strong>: <strong>単一形乾電池2本（DC 3.0V）</strong> による完全独立給電。<br>
+          ・リレー接点部（COM/NO）により、マイコン系とポンプ系は <strong>電源元およびGNDを含めて完全に物理的分離（アイソレーション）</strong> され、モーターの逆起電力ノイズ・突入電流・電圧ドロップによるマイコンの誤動作・破損を根本的に遮断します。
         </td>
       </tr>
       <tr>
@@ -459,24 +460,24 @@
     <tbody>
       <tr>
         <td><strong>GPIO0</strong></td>
-        <td>`RAIN_SENSE_A`</td>
-        <td>ADC1_CH0 / InOut</td>
-        <td>アナログ/Hi-Z</td>
-        <td>極性反転雨センサー 電極プレートA</td>
+        <td>`PIN_RAIN_OUT`</td>
+        <td>ADC1_CH0 / Input</td>
+        <td>アナログ入力</td>
+        <td>J3Y増幅 雨滴センサー信号出力 (OUT端子)</td>
       </tr>
       <tr>
         <td><strong>GPIO1</strong></td>
-        <td>`RAIN_SENSE_B`</td>
-        <td>ADC1_CH1 / InOut</td>
-        <td>アナログ/Hi-Z</td>
-        <td>極性反転雨センサー 電極プレートB</td>
+        <td>`PIN_RAIN_POWER`</td>
+        <td>Digital Output</td>
+        <td>プッシュプル/Hi-Z</td>
+        <td>雨センサー給電パルス制御 (VCC / 腐食・待機電力防止)</td>
       </tr>
       <tr>
         <td><strong>GPIO7</strong></td>
         <td>`PUMP_CTRL`</td>
         <td>Digital Output</td>
         <td>Active High</td>
-        <td>フォトカプラ絶縁モジュール入力（リレーON）</td>
+        <td>JQC-3F 3Vリレーモジュール制御（リレーON）</td>
       </tr>
       <tr>
         <td><strong>GPIO8</strong></td>
