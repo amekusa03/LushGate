@@ -77,24 +77,28 @@ graph TD
 ### (1) Rain Sensor Circuit (J3Y NPN Current Amplification & Pulsed Power)
 
 ```
-                +5V / +3.3V (Pulsed Power: GPIO1)
-                     │
-         +-----------+----------------------+
-         │                                  │
-      [ 1kΩ ]                             [ 100Ω ]
-         │                                  │
-      [ LED1 ] (Power Indicator)     [ Power Line (Yellow) ]
-         │                                  : (Raindrop resistance R_rain)
-        GND                          [ Sense Line (Red) ]
-                                            │
-                                            │ (Base)
-                       +----------------[ J3Y (NPN) ]
-                       │ (Collector)        │ (Emitter)
-                  +----+                    ├───> [ OUT ] ──> ESP32 GPIO0 (ADC1_CH0)
-                  │                         │
-                 +5V / +3.3V             [ 100Ω ]
-                                            │
-                                           GND
+       [ + Pin / VCC ] (ESP32 GPIO1: 3.3V Pulsed Power)
+           │
+           ├─────────────────────────+
+           │                         │ (Collector)
+           ├──────────────+          │
+           │              │          │
+        [ 1kΩ ]        [ 100Ω ]      │
+           │              │          │
+        [ LED1 ]      [ Sense Trace(+) ]
+        (Power LED)       : (Raindrop)
+           │          [ Sense Trace(-) ]
+           │              │          │
+           │              │ (Base)   │
+           │              +──────[ J3Y (NPN) ]
+           │                         │ (Emitter)
+           │                         ├──────────────> [ S Pin / OUT ] ──> ESP32 GPIO0 (ADC1_CH0)
+           │                         │
+           │                      [ 100Ω ]
+           │                         │
+           ├─────────────────────────+
+           │
+       [ - Pin / GND ] (ESP32 GND)
 ```
 - **Signal Amplification**: NPN transistor (J3Y / S8050) amplifies minute conduction currents from raindrops on the sensor to produce a solid, detectable voltage across the 100Ω emitter resistor.
 - **Ultra-Low Power & Anti-Corrosion**: VCC power is supplied via ESP32-C3 **GPIO1** only during measurement (5ms pulse). During idle/Deep Sleep, power is cut and pins are held in High-Z, eliminating quiescent current and electrochemical corrosion.
