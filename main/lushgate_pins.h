@@ -10,7 +10,7 @@
 #define PIN_USER_BUTTON     GPIO_NUM_9    // Digital Input (BOOTボタン共用 / Pull-up / APモード起動)
 
 // Active Levels
-#define PUMP_ACTIVE_LEVEL   1             // High = リレーON
+#define PUMP_ACTIVE_LEVEL   0             // High = リレーON
 #define LED_ACTIVE_LEVEL    0             // Low = LED点灯 (ESP32-C3一般的なActive Low)
 #define BUTTON_PRESSED_LEVEL 0            // Low = 押下 (Active Low)
 

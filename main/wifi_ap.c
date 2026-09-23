@@ -4,29 +4,11 @@
 #include "esp_netif.h"
 #include "esp_mac.h"
 #include "esp_log.h"
-#include "mdns.h"
 #include <string.h>
 
 static const char *TAG = "WIFI_AP";
 static bool s_wifi_active = false;
 static esp_netif_t *s_ap_netif = NULL;
-
-static void start_mdns_service(void)
-{
-    esp_err_t err = mdns_init();
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "mDNS init failed: %s", esp_err_to_name(err));
-        return;
-    }
-
-    // ホスト名を lushgate に設定 -> http://lushgate.local でアクセス可能
-    ESP_ERROR_CHECK(mdns_hostname_set("lushgate"));
-    ESP_ERROR_CHECK(mdns_instance_name_set("LushGate Solar Watering System"));
-
-    // HTTP サービス登録
-    ESP_ERROR_CHECK(mdns_service_add("LushGate-Web", "_http", "_tcp", 80, NULL, 0));
-    ESP_LOGI(TAG, "mDNS responder started: http://lushgate.local");
-}
 
 esp_err_t wifi_ap_start(const char *ssid_override, const char *password)
 {
@@ -69,9 +51,8 @@ esp_err_t wifi_ap_start(const char *ssid_override, const char *password)
     ESP_ERROR_CHECK(esp_wifi_start());
 
     s_wifi_active = true;
-    ESP_LOGI(TAG, "Wi-Fi AP started. SSID: [%s] Auth: %d", wifi_config.ap.ssid, wifi_config.ap.authmode);
-
-    start_mdns_service();
+    ESP_LOGI(TAG, "Wi-Fi AP started. SSID: [%s] Auth: %d -> Access via http://192.168.4.1",
+             wifi_config.ap.ssid, wifi_config.ap.authmode);
 
     return ESP_OK;
 }
@@ -80,7 +61,6 @@ void wifi_ap_stop(void)
 {
     if (!s_wifi_active) return;
 
-    mdns_free();
     esp_wifi_stop();
     esp_wifi_deinit();
     if (s_ap_netif) {
@@ -88,7 +68,7 @@ void wifi_ap_stop(void)
         s_ap_netif = NULL;
     }
     s_wifi_active = false;
-    ESP_LOGI(TAG, "Wi-Fi AP and mDNS stopped");
+    ESP_LOGI(TAG, "Wi-Fi AP stopped");
 }
 
 bool wifi_ap_is_active(void)

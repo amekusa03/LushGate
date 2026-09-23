@@ -4,7 +4,8 @@
 #include <stdbool.h>
 #include "esp_err.h"
 
-esp_err_t pump_init(void);
+esp_err_t pump_init(uint8_t active_level);
+void pump_set_active_level(uint8_t active_level);
 void pump_set_state(bool on);
 bool pump_is_running(void);
 

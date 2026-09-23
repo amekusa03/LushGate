@@ -8,6 +8,7 @@
 
 static const char *TAG = "PUMP_CTRL";
 static bool s_is_running = false;
+static uint8_t s_active_level = PUMP_ACTIVE_LEVEL;
 static esp_timer_handle_t s_manual_timer = NULL;
 
 static void manual_stop_callback(void* arg)
@@ -16,13 +17,26 @@ static void manual_stop_callback(void* arg)
     pump_manual_stop();
 }
 
-esp_err_t pump_init(void)
+void pump_set_active_level(uint8_t active_level)
 {
+    s_active_level = active_level ? 1 : 0;
+    ESP_LOGI(TAG, "Pump active level set to: %d (%s)", s_active_level, s_active_level ? "Active High" : "Active Low");
+    pump_set_state(s_is_running);
+}
+
+esp_err_t pump_init(uint8_t active_level)
+{
+    s_active_level = active_level ? 1 : 0;
+    
+    // 安全のため、初期化前にピンをOFFレベルに設定してから出力設定
+    uint32_t off_level = (1 - s_active_level);
+    gpio_set_level(PIN_PUMP_CTRL, off_level);
+
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << PIN_PUMP_CTRL),
         .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .pull_up_en = (off_level == 1) ? GPIO_PULLUP_ENABLE : GPIO_PULLUP_DISABLE,
+        .pull_down_en = (off_level == 0) ? GPIO_PULLDOWN_ENABLE : GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
     };
     gpio_config(&io_conf);
@@ -34,15 +48,16 @@ esp_err_t pump_init(void)
     };
     esp_timer_create(&timer_args, &s_manual_timer);
 
+    ESP_LOGI(TAG, "Pump initialized (Active Level: %d, Initial State: OFF)", s_active_level);
     return ESP_OK;
 }
 
 void pump_set_state(bool on)
 {
     s_is_running = on;
-    gpio_set_level(PIN_PUMP_CTRL, on ? PUMP_ACTIVE_LEVEL : (1 - PUMP_ACTIVE_LEVEL));
-    ESP_LOGI(TAG, "Pump state -> %s (GPIO%d = %d)", on ? "ON" : "OFF", PIN_PUMP_CTRL,
-             on ? PUMP_ACTIVE_LEVEL : (1 - PUMP_ACTIVE_LEVEL));
+    uint32_t level = on ? s_active_level : (1 - s_active_level);
+    gpio_set_level(PIN_PUMP_CTRL, level);
+    ESP_LOGI(TAG, "Pump state -> %s (GPIO%d = %lu)", on ? "ON" : "OFF", PIN_PUMP_CTRL, (unsigned long)level);
 }
 
 bool pump_is_running(void)

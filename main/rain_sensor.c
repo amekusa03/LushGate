@@ -27,7 +27,7 @@ esp_err_t rain_sensor_init(void)
     gpio_config(&pwr_conf);
     gpio_set_level(PIN_RAIN_POWER, 0);
 
-    // GPIO0 (OUT端子測定: ADC1_CH0) を入力（Hi-Z）に設定
+    // GPIO0 (OUT端子測定: ADC1_CH0) を入力に設定
     gpio_config_t out_conf = {
         .pin_bit_mask = (1ULL << PIN_RAIN_OUT),
         .mode = GPIO_MODE_INPUT,
@@ -70,7 +70,7 @@ esp_err_t rain_sensor_init(void)
 
 void rain_sensor_power_down(void)
 {
-    // 給電ピンをOFFにし、端子を完全Hi-Zにして待機時電力および電解腐食を完全遮断
+    // 給電ピンをOFFにし、端子を完全Hi-Zにして待機時電力および電極腐食を完全遮断
     gpio_set_level(PIN_RAIN_POWER, 0);
     gpio_set_direction(PIN_RAIN_POWER, GPIO_MODE_INPUT);
     gpio_set_pull_mode(PIN_RAIN_POWER, GPIO_FLOATING);
@@ -87,18 +87,25 @@ esp_err_t rain_sensor_read(uint16_t threshold_mv, rain_sensor_result_t *result)
         if (err != ESP_OK) return err;
     }
 
-    // 1. 給電ピン (GPIO1) を HIGH にして J3Y トランジスタ増幅回路にパルス給電
+    // 1. 給電ピン (GPIO1) を OUTPUT に設定して HIGH (パルス給電開始)
     gpio_set_direction(PIN_RAIN_POWER, GPIO_MODE_OUTPUT);
     gpio_set_level(PIN_RAIN_POWER, 1);
 
-    // 2. 電源立ち上がり・回路安定化待機 (5ms)
-    esp_rom_delay_us(5000);
+    // 2. 電源立ち上がり・増幅回路安定化待機 (15ms)
+    vTaskDelay(pdMS_TO_TICKS(15));
 
-    // 3. J3Y エミッタ出力 (OUT端子: GPIO0) を ADC サンプリング
-    int raw_val = 0;
-    adc_oneshot_read(s_adc_handle, RAIN_ADC_CH, &raw_val);
+    // 3. 複数回サンプリング（5回平均）で安定したADC値を取得
+    int raw_sum = 0;
+    const int SAMPLES = 5;
+    for (int i = 0; i < SAMPLES; i++) {
+        int val = 0;
+        adc_oneshot_read(s_adc_handle, RAIN_ADC_CH, &val);
+        raw_sum += val;
+        esp_rom_delay_us(1000); // 1ms間隔
+    }
+    int raw_val = raw_sum / SAMPLES;
 
-    // 4. 測定完了後、即座に通電を遮断して待機電流ゼロ＆電極腐食を防止
+    // 4. 測定完了後、即座に通電を遮断（待機電流ゼロ＆電解腐食防止）
     rain_sensor_power_down();
 
     // 5. 電圧 (mV) への換算
@@ -106,15 +113,17 @@ esp_err_t rain_sensor_read(uint16_t threshold_mv, rain_sensor_result_t *result)
     if (s_cali_enabled && s_adc_cali_handle) {
         adc_cali_raw_to_voltage(s_adc_cali_handle, raw_val, &voltage_mv);
     } else {
-        // 簡易換算 (12bit 3300mV)
         voltage_mv = (raw_val * 3300) / 4095;
     }
 
     result->raw_adc = (uint16_t)raw_val;
     result->voltage_mv = (uint16_t)voltage_mv;
+
+    // 6. 雨判定: 雨なし(乾燥) 約4mV / 雨あり(濡れ) 約180mV のため、閾値以上で「雨検知」
+    // (デフォルト閾値: 500mV。60mV以上なら雨あり)
     result->is_raining = (result->voltage_mv >= threshold_mv);
 
-    ESP_LOGI(TAG, "Rain Sensor (J3Y Amplified) Read: Raw=%d, Volt=%dmV, IsRaining=%s (Thresh=%dmV)",
+    ESP_LOGI(TAG, "Rain Sensor Read: Raw=%d, Volt=%dmV, IsRaining=%s (Thresh>=%dmV)",
              result->raw_adc, result->voltage_mv,
              result->is_raining ? "YES" : "NO", threshold_mv);
 

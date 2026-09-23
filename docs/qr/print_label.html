@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>LushGate 制御ボックス用ラベル</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: #f4f6f9;
+    }
+    .card {
+      background: #ffffff;
+      border: 3px solid #2e7d32;
+      border-radius: 12px;
+      padding: 24px 32px;
+      width: 520px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    h1 {
+      margin: 0 0 4px 0;
+      color: #1b5e20;
+      font-size: 22px;
+    }
+    .subtitle {
+      color: #666;
+      font-size: 12px;
+      margin-bottom: 20px;
+    }
+    .qr-container {
+      display: flex;
+      justify-content: space-around;
+      margin: 16px 0;
+    }
+    .qr-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 200px;
+    }
+    .qr-box img {
+      width: 160px;
+      height: 160px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 6px;
+      background: #fff;
+    }
+    .qr-label {
+      margin-top: 8px;
+      font-weight: bold;
+      font-size: 14px;
+      color: #333;
+    }
+    .qr-sub {
+      font-size: 11px;
+      color: #777;
+    }
+    .footer-instruction {
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px dashed #ccc;
+      font-size: 12px;
+      color: #444;
+      line-height: 1.5;
+    }
+    @media print {
+      body { background: transparent; margin: 0; }
+      .card { box-shadow: none; }
+      .no-print { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print" style="margin-bottom: 20px;">
+    <button onclick="window.print()" style="padding: 10px 20px; font-size: 16px; cursor: pointer; background: #2e7d32; color: white; border: none; border-radius: 6px;">
+      🖨️ このラベルを印刷する
+    </button>
+  </div>
+
+  <div class="card">
+    <h1>🌱 LushGate 散水システム</h1>
+    <div class="subtitle">Smart Solar Irrigation Controller</div>
+
+    <div class="qr-container">
+      <div class="qr-box">
+        <img src="qr_wifi_lushgate.png" alt="Wi-Fi QR">
+        <div class="qr-label">① Wi-Fi 接続</div>
+        <div class="qr-sub">SSID: LushGate</div>
+      </div>
+      <div class="qr-box">
+        <img src="qr_web_url.png" alt="Web UI QR">
+        <div class="qr-label">② 設定画面を開く</div>
+        <div class="qr-sub">http://192.168.4.1</div>
+      </div>
+    </div>
+
+    <div class="footer-instruction">
+      <strong>【使い方】</strong><br>
+      1. 本体 BOOT ボタンを押して AP を起動<br>
+      2. ①の QR をスマホカメラで読み取って Wi-Fi 接続<br>
+      3. ②の QR を読み取ってブラウザで設定画面を開く
+    </div>
+  </div>
+</body>
+</html>

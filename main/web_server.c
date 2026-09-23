@@ -94,14 +94,14 @@ static esp_err_t config_get_handler(httpd_req_t *req)
     lushgate_config_t cfg;
     storage_load_config(&cfg);
 
-    char resp[256];
+    char resp[300];
     snprintf(resp, sizeof(resp),
         "{\"sleep_interval_sec\":%d,\"sched_hour\":%d,\"sched_min\":%d,"
         "\"rain_thresh_min\":%d,\"adc_thresh_mv\":%d,\"pump_on_sec\":%d,"
-        "\"pump_off_sec\":%d,\"pump_total_sec\":%d,\"ap_timeout_sec\":%d}",
+        "\"pump_off_sec\":%d,\"pump_total_sec\":%d,\"ap_timeout_sec\":%d,\"pump_active_level\":%d}",
         cfg.sleep_interval_sec, cfg.sched_hour, cfg.sched_min,
         cfg.rain_thresh_min, cfg.adc_thresh_mv, cfg.pump_on_sec,
-        cfg.pump_off_sec, cfg.pump_total_sec, cfg.ap_timeout_sec);
+        cfg.pump_off_sec, cfg.pump_total_sec, cfg.ap_timeout_sec, cfg.pump_active_level);
 
     httpd_resp_set_type(req, "application/json");
     httpd_resp_send(req, resp, HTTPD_RESP_USE_STRLEN);
@@ -131,6 +131,8 @@ static esp_err_t config_post_handler(httpd_req_t *req)
     cfg.pump_off_sec       = parse_json_int(buf, "pump_off_sec", cfg.pump_off_sec);
     cfg.pump_total_sec     = parse_json_int(buf, "pump_total_sec", cfg.pump_total_sec);
     cfg.ap_timeout_sec     = parse_json_int(buf, "ap_timeout_sec", cfg.ap_timeout_sec);
+    cfg.pump_active_level  = parse_json_int(buf, "pump_active_level", cfg.pump_active_level);
+    pump_set_active_level(cfg.pump_active_level);
 
     storage_save_config(&cfg);
 

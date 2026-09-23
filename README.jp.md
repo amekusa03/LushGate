@@ -9,15 +9,15 @@
 
 ESP32-C3 を用いた山間部・露地畑向けの自律型自動散水システム。  
 降雨の有無（累積時間）をJ3Yトランジスタ増幅・低消費電力雨センサーで判断し、JQC-3F 3Vリレーモジュールで灯油ポンプを安全に制御して散水を行います。  
-現場での設定・メンテナンス用に、**Wi-Fi APモード + mDNS (`lushgate.local`) + Web UI** を搭載し、スマートフォンのブラウザから1タップで時刻補正、スリープ・散水設定のNV保存、散水履歴の確認やCSV出力が可能です。
+現場での設定・メンテナンス用に、**Wi-Fi APモード + Web UI** を搭載し、スマートフォンのブラウザから1タップで時刻補正、スリープ・散水設定のNV保存、散水履歴の確認やCSV出力が可能です。
 
 ---
 
 ## 1. 主な機能・特徴
 
-- **超低消費電力運用 (Deep Sleep)**:
+- **超低消費電力運用 (Light Sleep)**:
   - 待機時はWi-Fi/Bluetoothを完全OFF。数分おきに復帰し数msのパルス測定で雨量を積算。
-- **オンデマンド Wi-Fi AP & mDNS (`http://lushgate.local`)**:
+- **オンデマンド Wi-Fi AP (`http://192.168.4.1`)**:
   - ルーター不要。畑で `BOOTボタン` を長押しするだけで直接スマホから接続可能。
 - **Webによる1タップ時刻補正 (RTC同期)**:
   - スマホのブラウザ時刻とワンタップでESP32内蔵RTCを同期。
@@ -127,13 +127,13 @@ ESP32 GND (信号GND) -----------------------> | GND (電源GND)    |
 
 ### 4.1 モード切り替え
 - **通常運用モード (Normal Mode)**:
-  - Deep Sleepで設定周期（デフォルト3分）ごとに起動し、雨センサーをチェック・積算。
+  - Light Sleepで設定周期（デフォルト3分）ごとに起動し、雨センサーをチェック・積算。
   - 朝の設定時刻（デフォルト07:00）に24h累積降雨が閾値（デフォルト60分）未満の場合、ポンプを自動デューティ駆動（3分ON / 2分OFF、正味10分）。
-  - 散水完了・スキップ結果をNVS履歴に保存後、Deep Sleepへ移行。
+  - 散水完了・スキップ結果をNVS履歴に保存後、Light Sleepへ移行。
 - **APメンテナンスモード (Web UI)**:
   - `BOOTボタン (GPIO9)` を **2秒間長押し** するとLEDが点滅し、SoftAPとmDNSが起動。
   - スマホで Wi-Fi SSID: `LushGate-XXXX` に接続後、ブラウザで **`http://lushgate.local`** (または `http://192.168.4.1`) にアクセス。
-  - 5分間無操作（または画面上の「スリープへ」ボタン押下）で自動停止しDeep Sleepへ復帰。
+  - 5分間無操作（または画面上の「スリープへ」ボタン押下）で自動停止しLight Sleepへ復帰。
 
 ### 4.2 Web UI 機能一覧
 1. **ステータス & 時刻同期**:
@@ -162,7 +162,7 @@ ESP32 GND (信号GND) -----------------------> | GND (電源GND)    |
 | `GET` | `/api/history/csv` | 散水履歴のCSVダウンロード |
 | `POST`| `/api/history/clear` | 散水履歴の全消去 |
 | `POST`| `/api/pump/test` | ポンプ手動駆動 (`{"action":"start","duration_sec":30}`) |
-| `POST`| `/api/system/sleep` | APモードを終了し即時Deep Sleepへ移行 |
+| `POST`| `/api/system/sleep` | APモードを終了し即時Light Sleepへ移行 |
 
 ---
 
@@ -176,12 +176,12 @@ LushGate/
 ├── CMakeLists.txt          # ESP-IDF プロジェクトCMake
 └── main/
     ├── CMakeLists.txt      # コンポーネントCMake & Webファイル埋め込み
-    ├── main.c              # メイン制御フロー & Deep Sleep / スケジュール管理
+    ├── main.c              # メイン制御フロー & Light Sleep / スケジュール管理
     ├── lushgate_pins.h     # GPIOピンアサイン定義
     ├── rain_sensor.c/.h    # 極性反転・低消費電力雨センサードライバ
     ├── pump_control.c/.h   # ポンプデューティ駆動 & 手動テストドライバ
     ├── storage_manager.c/.h# NVS設定管理 & 履歴リングバッファ
-    ├── wifi_ap.c/.h        # SoftAP & mDNS (lushgate.local) 起動管理
+    ├── wifi_ap.c/.h        # SoftAP 起動管理 (`http://192.168.4.1`)
     ├── web_server.c/.h     # HTTPサーバー & RESTful API 実装
     └── web/
         └── index.html      # モダンWeb UI (SPA / HTML5+CSS+JS)
@@ -190,6 +190,10 @@ LushGate/
 ---
 
 ## 7. ビルド & 書き込み手順 (ESP-IDF)
+
+# ESP-IDF と ESP-Matter の環境をエクスポート
+source /home/kusa/esp/esp-idf/export.sh
+source /home/kusa/esp/esp-matter/export.sh
 
 ```bash
 # ターゲット設定 (ESP32-C3)
@@ -201,3 +205,13 @@ idf.py build
 # 書き込み & シリアルモニタ
 idf.py -p /dev/ttyACM0 flash monitor
 ```
+
+---
+
+## 🏷️ 制御ボックス用 QRコード・ラベル印刷
+
+屋外の制御盤・防水ボックスに貼れる QR コードとラベル印刷用 HTML を [docs/qr/](file:///home/kusa/ドキュメント/eSp32/LushGate/docs/qr) に格納しています。
+
+* [docs/qr/print_label.html](file:///home/kusa/ドキュメント/eSp32/LushGate/docs/qr/print_label.html) : ブラウザで開いて「印刷」を押すだけでラベルシールとして印刷可能
+* [docs/qr/qr_web_url.png](file:///home/kusa/ドキュメント/eSp32/LushGate/docs/qr/qr_web_url.png) : Web設定画面 (`http://192.168.4.1`) QRコード
+* [docs/qr/qr_wifi_lushgate.png](file:///home/kusa/ドキュメント/eSp32/LushGate/docs/qr/qr_wifi_lushgate.png) : Wi-Fi 自動接続用 QRコード
