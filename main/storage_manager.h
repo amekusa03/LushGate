@@ -34,7 +34,7 @@ typedef struct {
     uint8_t  pump_active_level;  // リレー駆動論理 (0: Active Low, 1: Active High, デフォルト0)
     char     ap_ssid[32];        // AP SSID
     char     ap_pass[64];        // AP パスワード (空ならオープン)
-} lushgate_config_t;
+} __attribute__((packed)) lushgate_config_t;
 
 esp_err_t storage_init(void);
 void storage_get_default_config(lushgate_config_t *config);

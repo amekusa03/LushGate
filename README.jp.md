@@ -9,16 +9,16 @@
 
 ESP32-C3 を用いた山間部・露地畑向けの自律型自動散水システム。  
 降雨の有無（累積時間）をJ3Yトランジスタ増幅・低消費電力雨センサーで判断し、JQC-3F 3Vリレーモジュールで灯油ポンプを安全に制御して散水を行います。  
-現場での設定・メンテナンス用に、**Wi-Fi APモード + Web UI** を搭載し、スマートフォンのブラウザから1タップで時刻補正、スリープ・散水設定のNV保存、散水履歴の確認やCSV出力が可能です。
+現場での設定・メンテナンス用に、**BLE (Bluetooth Low Energy) + Web Bluetooth UI** を搭載し、スマートフォンのブラウザから1タップで時刻補正、スリープ・散水設定のNV保存、散水履歴の確認やCSV出力が可能です。
 
 ---
 
 ## 1. 主な機能・特徴
 
 - **超低消費電力運用 (Light Sleep)**:
-  - 待機時はWi-Fi/Bluetoothを完全OFF。数分おきに復帰し数msのパルス測定で雨量を積算。
-- **オンデマンド Wi-Fi AP (`http://192.168.4.1`)**:
-  - ルーター不要。畑で `BOOTボタン` を長押しするだけで直接スマホから接続可能。
+  - 待機時はBluetoothを完全OFF (Light Sleep 約0.13mA)。数分おきに復帰し数msのパルス測定で雨量を積算。
+- **オンデマンド Web Bluetooth 通信 (Web BLE)**:
+  - ルーター不要。畑で `BOOTボタン` を押すだけで直接スマホのブラウザからBLE接続可能。
 - **Webによる1タップ時刻補正 (RTC同期)**:
   - スマホのブラウザ時刻とワンタップでESP32内蔵RTCを同期。
 - **Webによる動作・散水設定 (NVS保存)**:
@@ -39,8 +39,8 @@ ESP32-C3 を用いた山間部・露地畑向けの自律型自動散水シス�
 | **GPIO0** | `PIN_RAIN_OUT` | ADC1_CH0 / Input | 雨センサー信号入力（J3Y増幅出力 OUT端子） |
 | **GPIO1** | `PIN_RAIN_POWER`| Digital Output | 雨センサー給電パルス制御（VCC: 待機電力・腐食防止） |
 | **GPIO7** | `PUMP_CTRL` | Digital Output | ポンプ駆動制御 (Active-High: JQC-3F 3Vリレーモジュール制御) |
-| **GPIO8** | `STATUS_LED` | Digital Output | 動作状態インジケータLED (APモード時点滅) |
-| **GPIO9** | `USER_BUTTON` | Digital Input (Pull-up) | BOOTボタン共用 (2秒長押しでWi-Fi AP起動) |
+| **GPIO8** | `STATUS_LED` | Digital Output | 動作状態インジケータLED (BLEモード時点滅) |
+| **GPIO9** | `USER_BUTTON` | Digital Input (Pull-up) | BOOTボタン共用 (2秒長押しでBLEモード起動) |
 | **GPIO2-6, 10** | *(予備)* | GPIO / ADC1 | 予備・将来の拡張用（フロートスイッチ・水位センサ等） |
 | **GPIO18/19**| `USB_D- / D+`| Native USB | ファームウェア書き込み・USBシリアルデバッグ |
 
@@ -52,15 +52,14 @@ ESP32-C3 を用いた山間部・露地畑向けの自律型自動散水シス�
 
 ```mermaid
 graph TD
-    SolarGen[ソーラー発電機 / コントローラ] -->|5V USB 出力| ESP32[ESP32-C3 マイコン]
-    SolarGen -.->|12V 出力| Spare[予備 12V]
+    BatteryESP[乾電池 単三×4本 (DC 6V)] -->|USB給電| ESP32[ESP32-C3 マイコン]
     
     ESP32 -->|GPIO0 (OUT) / GPIO1 (VCC)| RainSensor[J3Y増幅雨センサー]
     ESP32 -->|GPIO7 (IN) / 3.3V / GND| RelayModule[JQC-3F 3Vリレーモジュール]
     ESP32 -->|GPIO8| LED[状態表示LED]
     ESP32 -->|GPIO9| Button[BOOTボタン / AP起動]
     
-    BatteryPump[乾電池 単一×2本 (DC 3V)] -->|接点 COM/NO| RelayModule --> Pump[灯油ポンプ 3V]
+    BatteryPump[乾電池 単三×2本 (DC 3V)] -->|接点 COM/NO| RelayModule --> Pump[灯油ポンプ 3V]
 ```
 
 ---
@@ -99,14 +98,14 @@ graph TD
 ### (2) ポンプ駆動回路（JQC-3F-03VDC-C 3Vリレーモジュール ＋ 乾電池完全独立給電）
 
 ```
-[ ESP32 制御系 (ソーラー5V USB給電) ]   [ JQC-3F-03VDC-C 3Vリレーモジュール ]     [ ポンプ駆動系 (乾電池3V完全独立) ]
+[ ESP32 制御系 (単三×4本 6V USB給電) ]   [ JQC-3F-03VDC-C 3Vリレーモジュール ]     [ ポンプ駆動系 (単三×2本 3V完全独立) ]
                                             +------------------+
 ESP32 3.3V (給電) ------------------------> | VCC (3V/3.3V電源) |
 GPIO7 (PUMP_CTRL 信号) -------------------> | IN  (制御信号入力)|
 ESP32 GND (信号GND) -----------------------> | GND (電源GND)    |
                                             |                  |
                                             |    [ 接点端子 ]  |
-                                            |         COM      | <──── 乾電池 (+) [単一×2本 3.0V]
+                                            |         COM      | <──── 乾電池 (+) [単三×2本 3.0V]
                                             |         NO       | ────> [ 灯油ポンプ (+) ]
                                             +------------------+            │
                                                                            [ 灯油ポンプ (3V) ]
@@ -116,8 +115,8 @@ ESP32 GND (信号GND) -----------------------> | GND (電源GND)    |
                                                                        乾電池 (-) [GND]
 ```
 - **電源の完全独立（究極のノイズ対策）**:
-  - **ESP32制御系**: ソーラー発電機の **5V USB出力** から給電（降圧コンバータ不要）。
-  - **ポンプ駆動系**: **単一形乾電池2本（3V）** から完全独立給電。
+  - **ESP32制御系**: **単三形乾電池4本（6V）** からUSB端子へ給電。
+  - **ポンプ駆動系**: **単三形乾電池2本（3V）** から完全独立給電。
   - 電源元およびGNDが完全に物理的分離（アイソレーション）され、ポンプ回転時のモーターノイズ・突入電流・逆起電力によるマイコン誤動作リスクが根本的にゼロになります。
 - **低電圧直結駆動**: リレーコイルが **3V（3.3V）系** のため、ESP32の 3.3V / GND / GPIO7 から直接シンプルに接続・駆動できます。
 
@@ -208,10 +207,16 @@ idf.py -p /dev/ttyACM0 flash monitor
 
 ---
 
-## 🏷️ 制御ボックス用 QRコード・ラベル印刷
+## 🏷️ 制御ボックス用 QRコード・ラベル印刷 & GitHub Pages
 
-屋外の制御盤・防水ボックスに貼れる QR コードとラベル印刷用 HTML を [docs/qr/](file:///home/kusa/ドキュメント/eSp32/LushGate/docs/qr) に格納しています。
+屋外の制御盤・防水ボックスに貼れる QR コードとラベル印刷用 HTML を [docs/qr/](file:///home/kusa/ドキュメント/eSp32/LushGate/docs/qr) に用意しています。
 
-* [docs/qr/print_label.html](file:///home/kusa/ドキュメント/eSp32/LushGate/docs/qr/print_label.html) : ブラウザで開いて「印刷」を押すだけでラベルシールとして印刷可能
-* [docs/qr/qr_web_url.png](file:///home/kusa/ドキュメント/eSp32/LushGate/docs/qr/qr_web_url.png) : Web設定画面 (`http://192.168.4.1`) QRコード
-* [docs/qr/qr_wifi_lushgate.png](file:///home/kusa/ドキュメント/eSp32/LushGate/docs/qr/qr_wifi_lushgate.png) : Wi-Fi 自動接続用 QRコード
+* **[docs/qr/print_label_ble.html](file:///home/kusa/ドキュメント/eSp32/LushGate/docs/qr/print_label_ble.html)** : BLE版ラベル印刷ページ（ブラウザで開いて「印刷」を押すだけで防水シール作成可能）
+* **Web アプリ公開URL**: `https://amekusa03.github.io/LushGate/`
+* **オフライン・PWA対応**: 一度ブラウザで開いて「ホーム画面に追加」しておけば、電波の届かない山奥の畑（圏外）でも完全にスタンドアロン動作します。
+
+### GitHub Pages の有効化手順
+1. GitHub リポジトリ（`amekusa03/LushGate`）の **Settings** > **Pages** を開く。
+2. **Build and deployment** の Source で **Deploy from a branch** を選択。
+3. Branch を `main`、フォルダを `/docs` に設定して **Save** を押す。
+4. 数分で `https://amekusa03.github.io/LushGate/` が公開されます。

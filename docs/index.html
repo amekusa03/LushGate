@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>LushGate BLE</title>
+<style>
+:root {
+  --bg: #0a1628;
+  --bg2: #0f2040;
+  --card: rgba(255,255,255,0.06);
+  --border: rgba(255,255,255,0.12);
+  --primary: #10b981;
+  --primary-d: #059669;
+  --accent: #38bdf8;
+  --warn: #f59e0b;
+  --danger: #ef4444;
+  --text: #f1f5f9;
+  --muted: #94a3b8;
+  --radius: 16px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:linear-gradient(135deg,#0a1628,#0f2040,#0d2a1a);color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  min-height:100vh;padding:12px}
+.app{max-width:480px;margin:0 auto}
+
+/* Header */
+header{display:flex;align-items:center;justify-content:space-between;
+  padding:14px 18px;background:var(--card);backdrop-filter:blur(12px);
+  border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px}
+.logo{display:flex;align-items:center;gap:10px;font-size:1.2rem;font-weight:700}
+.logo-icon{width:36px;height:36px;background:linear-gradient(135deg,var(--primary),var(--accent));
+  border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.3rem}
+.conn-dot{width:10px;height:10px;border-radius:50%;background:#475569;transition:.3s}
+.conn-dot.connected{background:var(--primary);box-shadow:0 0 8px var(--primary)}
+.conn-status{font-size:.8rem;color:var(--muted);display:flex;align-items:center;gap:6px}
+
+/* Connect button */
+#btn-connect{width:100%;padding:15px;border-radius:var(--radius);border:none;
+  background:linear-gradient(135deg,var(--primary),var(--accent));
+  color:#fff;font-size:1rem;font-weight:700;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  transition:.2s;margin-bottom:12px;letter-spacing:.5px}
+#btn-connect:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(16,185,129,.4)}
+#btn-connect:disabled{background:#1e3a3a;color:var(--muted);cursor:default;transform:none;box-shadow:none}
+#btn-connect.disconnecting{background:linear-gradient(135deg,var(--danger),#f97316)}
+
+/* Tabs */
+.tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px}
+.tab{background:var(--card);border:1px solid var(--border);color:var(--muted);
+  padding:10px 4px;border-radius:12px;font-size:.8rem;font-weight:600;
+  cursor:pointer;text-align:center;transition:.2s;display:flex;
+  flex-direction:column;align-items:center;gap:3px}
+.tab .ti{font-size:1.1rem}
+.tab.active{background:var(--primary);color:#fff;border-color:var(--primary);
+  box-shadow:0 4px 12px rgba(16,185,129,.3)}
+.panel{display:none}.panel.active{display:block}
+
+/* Card */
+.card{background:var(--card);backdrop-filter:blur(12px);border:1px solid var(--border);
+  border-radius:var(--radius);padding:16px;margin-bottom:12px}
+.card-title{font-size:.95rem;font-weight:700;margin-bottom:14px;
+  display:flex;align-items:center;gap:8px;color:#fff}
+.card-title .ti{font-size:1.1rem;opacity:.8}
+
+/* Stats grid */
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat{background:rgba(0,0,0,0.25);border-radius:12px;padding:12px;text-align:center;
+  border:1px solid rgba(255,255,255,.05)}
+.stat-label{font-size:.72rem;color:var(--muted);margin-bottom:4px}
+.stat-val{font-size:1.5rem;font-weight:700}
+.stat-val.green{color:var(--primary)}
+.stat-val.blue{color:var(--accent)}
+.stat-val.amber{color:var(--warn)}
+
+/* Status badge */
+.badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;
+  border-radius:20px;font-size:.75rem;font-weight:600}
+.badge-on{background:rgba(16,185,129,.2);color:#34d399;border:1px solid var(--primary)}
+.badge-off{background:rgba(100,116,139,.2);color:var(--muted);border:1px solid rgba(100,116,139,.3)}
+.badge-rain{background:rgba(56,189,248,.2);color:#7dd3fc;border:1px solid var(--accent)}
+
+/* Form */
+.form-group{margin-bottom:13px}
+label{display:block;font-size:.8rem;color:var(--muted);margin-bottom:6px;font-weight:500}
+.input-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+input,select{width:100%;padding:10px 12px;background:rgba(0,0,0,.35);
+  border:1px solid var(--border);border-radius:10px;color:#fff;font-size:.9rem;outline:none;
+  transition:.2s}
+input:focus,select:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(16,185,129,.15)}
+input[type=time]{color-scheme:dark}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  width:100%;padding:12px;border-radius:12px;font-weight:600;font-size:.9rem;
+  border:none;cursor:pointer;transition:.2s;letter-spacing:.3px}
+.btn:active{transform:scale(0.97)}
+.btn-primary{background:var(--primary);color:#fff}
+.btn-primary:hover{background:var(--primary-d)}
+.btn-accent{background:var(--accent);color:#0a1628}
+.btn-warn{background:var(--warn);color:#111}
+.btn-danger{background:var(--danger);color:#fff}
+.btn-ghost{background:rgba(255,255,255,.1);color:#fff}
+.btn-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.btn:disabled{opacity:.4;cursor:default;pointer-events:none}
+
+/* Pump control */
+.pump-big{width:120px;height:120px;border-radius:50%;border:3px solid var(--border);
+  background:rgba(0,0,0,.3);display:flex;flex-direction:column;align-items:center;
+  justify-content:center;cursor:pointer;transition:.3s;margin:0 auto 16px;font-size:2.5rem;
+  position:relative;overflow:hidden}
+.pump-big.on{border-color:var(--primary);background:rgba(16,185,129,.15);
+  box-shadow:0 0 30px rgba(16,185,129,.4)}
+.pump-big.pulsing::after{content:'';position:absolute;width:100%;height:100%;
+  border-radius:50%;border:2px solid var(--primary);animation:pulse 1.5s infinite}
+@keyframes pulse{0%{transform:scale(1);opacity:.8}100%{transform:scale(1.4);opacity:0}}
+.pump-label{font-size:.75rem;color:var(--muted);margin-top:4px}
+.duration-row{display:flex;gap:8px;margin-bottom:12px}
+.duration-row input{flex:1}
+
+/* History table */
+.hist-table{width:100%;border-collapse:collapse;font-size:.78rem}
+.hist-table th{color:var(--muted);font-weight:600;padding:8px 6px;
+  text-align:left;border-bottom:1px solid var(--border)}
+.hist-table td{padding:8px 6px;border-bottom:1px solid rgba(255,255,255,.05)}
+.hist-page{display:flex;align-items:center;justify-content:space-between;
+  margin-top:10px;font-size:.82rem;color:var(--muted)}
+.hist-page button{background:rgba(255,255,255,.1);border:none;color:#fff;
+  padding:5px 12px;border-radius:8px;cursor:pointer;font-size:.8rem}
+
+/* Toast */
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(80px);
+  background:#1e3a50;color:#fff;padding:10px 20px;border-radius:12px;
+  font-size:.85rem;transition:.3s;white-space:nowrap;z-index:99;
+  border:1px solid var(--border);opacity:0}
+#toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+#toast.ok{border-color:var(--primary);background:rgba(16,185,129,.2)}
+#toast.err{border-color:var(--danger);background:rgba(239,68,68,.2)}
+
+/* Log */
+#log{background:rgba(0,0,0,.4);border-radius:10px;padding:10px;
+  font-family:monospace;font-size:.75rem;color:#64748b;max-height:150px;
+  overflow-y:auto;line-height:1.6}
+#log .ok{color:var(--primary)}
+#log .err{color:var(--danger)}
+#log .info{color:var(--accent)}
+
+/* Progress bar */
+.prog-bar{background:rgba(255,255,255,.1);height:8px;border-radius:4px;overflow:hidden;margin-top:6px}
+.prog-fill{background:linear-gradient(90deg,var(--accent),var(--primary));
+  height:100%;transition:width .4s;border-radius:4px}
+
+/* Spinner */
+.spin{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.3);
+  border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- Header -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🌿</div>
+    <div>
+      <div>LushGate</div>
+      <div style="font-size:.7rem;color:var(--muted);font-weight:400">BLE Controller</div>
+    </div>
+  </div>
+  <div class="conn-status">
+    <div class="conn-dot" id="conn-dot"></div>
+    <span id="conn-label">未接続</span>
+  </div>
+</header>
+
+<!-- Connect button -->
+<button id="btn-connect" onclick="toggleConnect()">
+  <span id="btn-connect-icon">📡</span>
+  <span id="btn-connect-text">LushGate に接続</span>
+</button>
+<div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px;font-size:0.8rem;color:var(--muted);padding:0 4px">
+  <span>※ESP32のBOOTボタンを押してLED点滅中に接続</span>
+  <label style="display:flex;align-items:center;gap:4px;cursor:pointer">
+    <input type="checkbox" id="chk-all-devices" style="cursor:pointer"> 全機器を表示
+  </label>
+</div>
+
+<!-- Tabs -->
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('status')" id="tab-status">
+    <span class="ti">📊</span>状態
+  </div>
+  <div class="tab" onclick="switchTab('control')" id="tab-control">
+    <span class="ti">💧</span>操作
+  </div>
+  <div class="tab" onclick="switchTab('config')" id="tab-config">
+    <span class="ti">⚙️</span>設定
+  </div>
+  <div class="tab" onclick="switchTab('history')" id="tab-history">
+    <span class="ti">📋</span>履歴
+  </div>
+</div>
+
+<!-- ===== STATUS PANEL ===== -->
+<div class="panel active" id="panel-status">
+  <div class="card">
+    <div class="card-title"><span class="ti">🌧️</span>雨センサー リアルタイム測定 (1秒更新)</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div>
+        <div style="font-size:0.75rem;color:var(--muted)">検知判定</div>
+        <div id="stat-rain-wet-badge" style="margin-top:4px">
+          <span class="badge badge-off">☀️ 乾燥 (雨なし)</span>
+        </div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:0.75rem;color:var(--muted)">測定電圧 (ADC)</div>
+        <div class="stat-val blue" id="stat-rain-raw-mv" style="font-size:1.4rem;font-weight:700">-- mV</div>
+      </div>
+    </div>
+    <div class="prog-bar">
+      <div class="prog-fill" id="stat-rain-bar" style="width: 0%"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:var(--muted);margin-top:4px">
+      <span>0 mV (乾燥)</span>
+      <span id="stat-rain-thresh-label">しきい値目安: 500 mV</span>
+      <span>3300 mV (雨)</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="ti">🌤️</span>システムの稼働サマリー</div>
+    <div class="stat-grid">
+      <div class="stat">
+        <div class="stat-label">累積降雨時間</div>
+        <div class="stat-val blue" id="stat-rain">--</div>
+        <div style="font-size:.7rem;color:var(--muted)">分 / 24h</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">ポンプ状態</div>
+        <div id="stat-pump-badge" style="margin-top:4px">
+          <span class="badge badge-off">● 停止中</span>
+        </div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">デバイス時刻</div>
+        <div class="stat-val" id="stat-time" style="font-size:1rem">--:--</div>
+      </div>
+      <div class="stat">
+        <div class="stat-label">最終散水日</div>
+        <div class="stat-val green" id="stat-day">--</div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title"><span class="ti">🕐</span>時刻同期</div>
+    <p style="font-size:.82rem;color:var(--muted);margin-bottom:12px">
+      スマートフォンの現在時刻をESP32に送信します。
+    </p>
+    <button class="btn btn-accent" onclick="syncTime()" id="btn-sync" disabled>
+      📡 スマホの時刻を同期
+    </button>
+  </div>
+  <div class="card">
+    <div class="card-title"><span class="ti">🔌</span>デバッグログ</div>
+    <div id="log"><span class="info">-- BLE接続待ち --</span></div>
+  </div>
+</div>
+
+<!-- ===== CONTROL PANEL ===== -->
+<div class="panel" id="panel-control">
+  <div class="card" style="text-align:center">
+    <div class="card-title"><span class="ti">💧</span>ポンプ手動制御</div>
+    <div class="pump-big" id="pump-btn" onclick="togglePump()">
+      💧
+      <div class="pump-label" id="pump-status-txt">停止中</div>
+    </div>
+    <div class="duration-row">
+      <input type="number" id="pump-duration" value="30" min="1" max="1800"
+             style="text-align:center">
+      <span style="line-height:44px;color:var(--muted);white-space:nowrap">秒間</span>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="pumpOn()" id="btn-pump-on" disabled>
+        ▶ ON
+      </button>
+      <button class="btn btn-danger" onclick="pumpOff()" id="btn-pump-off" disabled>
+        ■ OFF
+      </button>
+    </div>
+    <button class="btn btn-warn" onclick="pumpOn(5)" style="margin-top:0" disabled id="btn-pump-test">
+      ⚡ 5秒テスト
+    </button>
+  </div>
+</div>
+
+<!-- ===== CONFIG PANEL ===== -->
+<div class="panel" id="panel-config">
+  <div class="card">
+    <div class="card-title"><span class="ti">⏰</span>散水スケジュール</div>
+    <div class="form-group">
+      <label>散水開始時刻</label>
+      <input type="time" id="cfg-sched-time" value="07:00">
+    </div>
+    <div class="form-group">
+      <label>総散水時間 (秒)</label>
+      <input type="number" id="cfg-pump-total" value="600" min="10" max="7200">
+    </div>
+    <div class="input-row">
+      <div class="form-group">
+        <label>ポンプON (秒)</label>
+        <input type="number" id="cfg-pump-on" value="180" min="1" max="3600">
+      </div>
+      <div class="form-group">
+        <label>ポンプOFF (秒)</label>
+        <input type="number" id="cfg-pump-off" value="120" min="1" max="3600">
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title"><span class="ti">🌧️</span>雨量設定</div>
+    <div class="form-group">
+      <label>散水スキップ閾値 (分/24h)</label>
+      <input type="number" id="cfg-rain-thresh" value="60" min="0" max="1440">
+      <div class="prog-bar"><div class="prog-fill" id="rain-thresh-bar" style="width:4%"></div></div>
+    </div>
+    <div class="form-group">
+      <label>雨滴センサー閾値 (mV)</label>
+      <input type="number" id="cfg-adc-thresh" value="60" min="0" max="3300">
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title"><span class="ti">🔋</span>省電力設定</div>
+    <div class="form-group">
+      <label>スリープ間隔 (秒)</label>
+      <input type="number" id="cfg-sleep" value="180" min="10" max="86400">
+    </div>
+    <div class="form-group">
+      <label>BLE/APタイムアウト (秒)</label>
+      <input type="number" id="cfg-ap-timeout" value="300" min="30" max="3600">
+    </div>
+    <div class="form-group">
+      <label>リレー駆動論理</label>
+      <select id="cfg-pump-active-level">
+        <option value="0">Active Low (GPIO=0でON) ← デフォルト</option>
+        <option value="1">Active High (GPIO=1でON)</option>
+      </select>
+    </div>
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-ghost" onclick="readConfig()" id="btn-read-cfg" disabled>
+      📥 読み込み
+    </button>
+    <button class="btn btn-primary" onclick="writeConfig()" id="btn-write-cfg" disabled>
+      📤 書き込み
+    </button>
+  </div>
+</div>
+
+<!-- ===== HISTORY PANEL ===== -->
+<div class="panel" id="panel-history">
+  <div class="card">
+    <div class="card-title"><span class="ti">📋</span>散水履歴</div>
+    <table class="hist-table">
+      <thead>
+        <tr><th>日時</th><th>結果</th><th>雨量</th><th>散水(秒)</th></tr>
+      </thead>
+      <tbody id="hist-tbody">
+        <tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px">
+          接続後「更新」を押してください
+        </td></tr>
+      </tbody>
+    </table>
+    <div class="hist-page">
+      <button onclick="histPrev()">◀ 前へ</button>
+      <span id="hist-page-label">- / -</span>
+      <button onclick="histNext()">次へ ▶</button>
+    </div>
+  </div>
+  <button class="btn btn-ghost" onclick="loadHistory()" id="btn-hist-refresh" disabled style="margin-top:0">
+    🔄 履歴を更新
+  </button>
+</div>
+
+</div><!-- .app -->
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+// ===== BLE UUIDs =====
+const SVC_UUID   = '12340000-5678-1234-5678-000000000000';
+const CHR_CONFIG   = '12340001-5678-1234-5678-000000000000';
+const CHR_TIMESYNC = '12340002-5678-1234-5678-000000000000';
+const CHR_PUMP_CMD = '12340003-5678-1234-5678-000000000000';
+const CHR_STATUS   = '12340004-5678-1234-5678-000000000000';
+const CHR_HISTORY  = '12340005-5678-1234-5678-000000000000';
+
+// ===== State =====
+let device   = null;
+let server   = null;
+let service  = null;
+let chars    = {};
+let pumpRunning   = false;
+let histPage      = 0;
+let histTotal     = 0;
+
+// config struct layout (Little Endian)
+// uint16 sleep_interval_sec  +0
+// uint8  sched_hour          +2
+// uint8  sched_min           +3
+// uint16 rain_thresh_min     +4
+// uint16 adc_thresh_mv       +6
+// uint16 pump_on_sec         +8
+// uint16 pump_off_sec        +10
+// uint16 pump_total_sec      +12
+// uint16 ap_timeout_sec      +14
+// uint8  pump_active_level   +16
+// char   ap_ssid[32]         +17
+// char   ap_pass[64]         +49
+// total: 113 bytes
+const CFG_SIZE = 113;
+
+// ===== Logging =====
+function addLog(msg, type='info') {
+  const log = document.getElementById('log');
+  const now = new Date().toLocaleTimeString('ja-JP', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const span = document.createElement('div');
+  span.className = type;
+  span.textContent = `[${now}] ${msg}`;
+  log.appendChild(span);
+  log.scrollTop = log.scrollHeight;
+  if (log.children.length > 80) log.removeChild(log.firstChild);
+}
+
+// ===== Toast =====
+let toastTimer;
+function showToast(msg, type='ok') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `show ${type}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.className = '', 2800);
+}
+
+// ===== Tab =====
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById(`tab-${name}`).classList.add('active');
+  document.getElementById(`panel-${name}`).classList.add('active');
+}
+
+// ===== BLE connect / disconnect =====
+async function toggleConnect() {
+  if (device && device.gatt.connected) {
+    await disconnect();
+  } else {
+    await connect();
+  }
+}
+
+async function connect() {
+  if (!navigator.bluetooth) {
+    showToast('Web Bluetooth API が使えません（ChromeかEdgeを使ってください）', 'err');
+    addLog('Web Bluetooth 未対応ブラウザです', 'err');
+    return;
+  }
+  const btn = document.getElementById('btn-connect');
+  btn.disabled = true;
+  document.getElementById('btn-connect-text').textContent = '接続中...';
+  document.getElementById('btn-connect-icon').innerHTML = '<span class="spin"></span>';
+  addLog('BLEデバイスをスキャン中...', 'info');
+
+  try {
+    const showAll = document.getElementById("chk-all-devices")?.checked;
+    let reqOptions;
+    if (showAll) {
+      addLog("全デバイス対象でスキャンします...", "info");
+      reqOptions = {
+        acceptAllDevices: true,
+        optionalServices: [SVC_UUID]
+      };
+    } else {
+      addLog("LushGate フィルタでスキャンします...", "info");
+      reqOptions = {
+        filters: [
+          { name: "LushGate" },
+          { namePrefix: "Lush" },
+          { namePrefix: "lush" }
+        ],
+        optionalServices: [SVC_UUID]
+      };
+    }
+    device = await navigator.bluetooth.requestDevice(reqOptions);
+    addLog(`デバイス選択: ${device.name || "名称未設定"} (${device.id})`, "info");
+    device.addEventListener("gattserverdisconnected", onDisconnected);
+
+    addLog("GATTサーバーに接続中...", "info");
+    server  = await device.gatt.connect();
+    // Android BLE stack stability delay
+    await new Promise(r => setTimeout(r, 400));
+
+    addLog("LushGate サービスを検索中...", "info");
+    service = await server.getPrimaryService(SVC_UUID);
+
+    chars.config   = await service.getCharacteristic(CHR_CONFIG);
+    chars.timesync = await service.getCharacteristic(CHR_TIMESYNC);
+    chars.pumpCmd  = await service.getCharacteristic(CHR_PUMP_CMD);
+    chars.status   = await service.getCharacteristic(CHR_STATUS);
+    chars.history  = await service.getCharacteristic(CHR_HISTORY);
+
+    // STATUS notify 購読
+    await chars.status.startNotifications();
+    chars.status.addEventListener('characteristicvaluechanged', onStatusNotify);
+
+    onConnected();
+    addLog(`接続成功: ${device.name}`, 'ok');
+
+    // 接続直後に状態取得
+    await refreshStatus();
+
+  } catch(e) {
+    addLog(`接続失敗: ${e.message}`, 'err');
+    showToast('接続に失敗しました', 'err');
+    setConnUI(false);
+  }
+}
+
+async function disconnect() {
+  if (device) device.gatt.disconnect();
+}
+
+function onConnected() {
+  setConnUI(true);
+  showToast('LushGate に接続しました ✅', 'ok');
+}
+
+function onDisconnected() {
+  chars = {};
+  device = null; server = null; service = null;
+  setConnUI(false);
+  addLog('切断されました', 'err');
+  showToast('切断されました', 'err');
+}
+
+function setConnUI(connected) {
+  document.getElementById('conn-dot').className = 'conn-dot' + (connected ? ' connected' : '');
+  document.getElementById('conn-label').textContent = connected ? '接続中' : '未接続';
+  const btn = document.getElementById('btn-connect');
+  btn.disabled = false;
+  if (connected) {
+    btn.className = 'disconnecting';
+    document.getElementById('btn-connect-icon').textContent = '✕';
+    document.getElementById('btn-connect-text').textContent = '切断';
+  } else {
+    btn.className = '';
+    document.getElementById('btn-connect-icon').textContent = '📡';
+    document.getElementById('btn-connect-text').textContent = 'LushGate に接続';
+  }
+
+  // ボタン有効/無効切り替え
+  ['btn-sync','btn-pump-on','btn-pump-off','btn-pump-test',
+   'btn-read-cfg','btn-write-cfg','btn-hist-refresh'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !connected;
+  });
+}
+
+// ===== STATUS =====
+function onStatusNotify(event) {
+  const dec = new TextDecoder();
+  const json = dec.decode(event.target.value);
+  try {
+    updateStatusUI(JSON.parse(json));
+  } catch(e) {}
+}
+
+async function refreshStatus() {
+  if (!chars.status) return;
+  try {
+    const val = await chars.status.readValue();
+    const dec = new TextDecoder();
+    const json = dec.decode(val);
+    updateStatusUI(JSON.parse(json));
+  } catch(e) {
+    addLog('状態読み取りエラー: ' + e.message, 'err');
+  }
+}
+
+function updateStatusUI(data) {
+  if (data.mv !== undefined) {
+    const el = document.getElementById("stat-rain-raw-mv");
+    if (el) el.textContent = data.mv + " mV";
+    const pct = Math.min(100, Math.max(0, (data.mv / 3300) * 100));
+    const bar = document.getElementById("stat-rain-bar");
+    if (bar) bar.style.width = pct + "%";
+  }
+  if (data.wet !== undefined) {
+    const badge = document.getElementById("stat-rain-wet-badge");
+    if (badge) {
+      badge.innerHTML = data.wet
+        ? `<span class="badge badge-on" style="background:rgba(59,130,246,0.25);border-color:#3b82f6;color:#60a5fa">💧 雨検知中 (濡れ)</span>`
+        : `<span class="badge badge-off">☀️ 乾燥中 (雨なし)</span>`;
+    }
+  }
+  if (data.rain !== undefined) {
+    document.getElementById('stat-rain').textContent = data.rain;
+  }
+  if (data.pump !== undefined) {
+    pumpRunning = data.pump;
+    const badge = document.getElementById('stat-pump-badge');
+    badge.innerHTML = data.pump
+      ? '<span class="badge badge-on">● 動作中</span>'
+      : '<span class="badge badge-off">● 停止中</span>';
+    updatePumpUI(data.pump);
+  }
+  if (data.epoch !== undefined) {
+    if (data.synced) {
+      const dt = new Date(data.epoch * 1000);
+      const h = String(dt.getHours()).padStart(2, "0");
+      const m = String(dt.getMinutes()).padStart(2, "0");
+      const s = String(dt.getSeconds()).padStart(2, "0");
+      document.getElementById("stat-time").textContent = `${h}:${m}:${s}`;
+    } else {
+      document.getElementById("stat-time").textContent = "未同期";
+    }
+  } else if (data.h !== undefined && data.m !== undefined) {
+    document.getElementById("stat-time").textContent =
+      String(data.h).padStart(2, "0") + ":" + String(data.m).padStart(2, "0");
+  }
+  if (data.day !== undefined) {
+    document.getElementById('stat-day').textContent =
+      data.day === 0xFF ? '--' : `${data.day}日`;
+  }
+}
+
+function updatePumpUI(on) {
+  const btn = document.getElementById('pump-btn');
+  const txt = document.getElementById('pump-status-txt');
+  if (on) {
+    btn.classList.add('on', 'pulsing');
+    txt.textContent = '動作中';
+  } else {
+    btn.classList.remove('on', 'pulsing');
+    txt.textContent = '停止中';
+  }
+}
+
+// ===== TIME SYNC =====
+async function syncTime() {
+  if (!chars.timesync) return;
+  const epoch = Math.floor(Date.now() / 1000);
+  const buf = new ArrayBuffer(4);
+  new DataView(buf).setUint32(0, epoch, true); // LE
+  try {
+    await chars.timesync.writeValue(buf);
+    const dt = new Date(epoch * 1000);
+    const fmt = dt.toLocaleString('ja-JP');
+    addLog(`時刻同期完了: ${fmt} (Epoch: ${epoch})`, 'ok');
+    showToast('時刻を同期しました ✅', 'ok');
+    setTimeout(refreshStatus, 500);
+  } catch(e) {
+    addLog('時刻同期失敗: ' + e.message, 'err');
+    showToast('時刻同期に失敗しました', 'err');
+  }
+}
+
+// ===== PUMP =====
+async function sendPumpCmd(cmd, durationSec) {
+  if (!chars.pumpCmd) return;
+  let buf;
+  if (cmd === 2) {
+    buf = new Uint8Array([0x02, durationSec & 0xFF, (durationSec >> 8) & 0xFF]);
+  } else {
+    buf = new Uint8Array([cmd]);
+  }
+  try {
+    await chars.pumpCmd.writeValue(buf);
+    const msg = cmd === 0 ? 'ポンプOFF' : cmd === 1 ? 'ポンプON (無制限)' : `ポンプON ${durationSec}秒`;
+    addLog(msg, 'ok');
+    showToast(msg, 'ok');
+    setTimeout(refreshStatus, 500);
+  } catch(e) {
+    addLog('ポンプコマンド失敗: ' + e.message, 'err');
+    showToast('コマンド送信失敗', 'err');
+  }
+}
+
+function togglePump() {
+  if (pumpRunning) pumpOff(); else pumpOn();
+}
+
+function pumpOn(sec) {
+  const duration = sec || parseInt(document.getElementById('pump-duration').value) || 30;
+  sendPumpCmd(2, duration);
+}
+
+function pumpOff() {
+  sendPumpCmd(0, 0);
+}
+
+// ===== CONFIG =====
+function readConfig() {
+  if (!chars.config) return;
+  addLog('設定を読み込み中...', 'info');
+  chars.config.readValue().then(val => {
+    const dv = val;
+    const dec = new TextDecoder();
+
+    document.getElementById('cfg-sleep').value          = dv.getUint16(0, true);
+    document.getElementById('cfg-sched-time').value     =
+      String(dv.getUint8(2)).padStart(2,'0') + ':' +
+      String(dv.getUint8(3)).padStart(2,'0');
+    document.getElementById('cfg-rain-thresh').value    = dv.getUint16(4, true);
+    document.getElementById('cfg-adc-thresh').value     = dv.getUint16(6, true);
+    document.getElementById('cfg-pump-on').value        = dv.getUint16(8, true);
+    document.getElementById('cfg-pump-off').value       = dv.getUint16(10, true);
+    document.getElementById('cfg-pump-total').value     = dv.getUint16(12, true);
+    document.getElementById('cfg-ap-timeout').value     = dv.getUint16(14, true);
+    document.getElementById('cfg-pump-active-level').value = dv.getUint8(16);
+
+    updateRainBar();
+    addLog('設定を読み込みました', 'ok');
+    showToast('設定を読み込みました ✅', 'ok');
+  }).catch(e => {
+    addLog('設定読み込み失敗: ' + e.message, 'err');
+    showToast('設定読み込みに失敗', 'err');
+  });
+}
+
+function updateRainBar() {
+  const val = parseInt(document.getElementById('cfg-rain-thresh').value) || 0;
+  document.getElementById('rain-thresh-bar').style.width = Math.min(100, val / 14.4) + '%';
+}
+document.getElementById('cfg-rain-thresh').addEventListener('input', updateRainBar);
+
+async function writeConfig() {
+  if (!chars.config) return;
+
+  const timeVal  = document.getElementById('cfg-sched-time').value.split(':');
+  const schedH   = parseInt(timeVal[0]) || 7;
+  const schedM   = parseInt(timeVal[1]) || 0;
+
+  const buf = new ArrayBuffer(CFG_SIZE);
+  const dv  = new DataView(buf);
+  const enc = new TextEncoder();
+
+  dv.setUint16(0,  parseInt(document.getElementById('cfg-sleep').value) || 180, true);
+  dv.setUint8 (2,  schedH);
+  dv.setUint8 (3,  schedM);
+  dv.setUint16(4,  parseInt(document.getElementById('cfg-rain-thresh').value) || 60, true);
+  dv.setUint16(6,  parseInt(document.getElementById('cfg-adc-thresh').value)  || 60, true);
+  dv.setUint16(8,  parseInt(document.getElementById('cfg-pump-on').value)    || 180, true);
+  dv.setUint16(10, parseInt(document.getElementById('cfg-pump-off').value)   || 120, true);
+  dv.setUint16(12, parseInt(document.getElementById('cfg-pump-total').value) || 600, true);
+  dv.setUint16(14, parseInt(document.getElementById('cfg-ap-timeout').value) || 300, true);
+  dv.setUint8 (16, parseInt(document.getElementById('cfg-pump-active-level').value));
+  // ap_ssid, ap_pass は読み込んだ値を保持するため0埋め (変更なし)
+
+  try {
+    if (chars.config.writeValueWithResponse) {
+      await chars.config.writeValueWithResponse(buf);
+    } else {
+      await chars.config.writeValue(buf);
+    }
+    addLog('設定を書き込みました', 'ok');
+    showToast('設定を保存しました ✅', 'ok');
+  } catch(e) {
+    console.error('Config write error:', e);
+    addLog('設定書き込み失敗: ' + e.message, 'err');
+    showToast('設定の書き込みに失敗', 'err');
+  }
+}
+
+// ===== HISTORY =====
+const HIST_PER_PAGE = 8;
+let histEntries = [];
+
+async function loadHistory() {
+  if (!chars.history) return;
+  addLog('履歴を取得中...', 'info');
+  histEntries = [];
+  histPage = 0;
+
+  // 最大60件取得 (storage_manager.h MAX_HISTORY_ENTRIES)
+  const maxCount = 60;
+  for (let i = 0; i < maxCount; i++) {
+    try {
+      // インデックス書き込み
+      const idxBuf = new ArrayBuffer(2);
+      new DataView(idxBuf).setUint16(0, i, true);
+      if (chars.history.writeValueWithResponse) {
+        await chars.history.writeValueWithResponse(idxBuf);
+      } else {
+        await chars.history.writeValue(idxBuf);
+      }
+      await new Promise(r => setTimeout(r, 60)); // 応答待ち
+
+      const val = await chars.history.readValue();
+      const dec = new TextDecoder();
+      const json = dec.decode(val);
+      const data = JSON.parse(json);
+      if (!data || !data.valid || data.err) {
+        // 有効なデータがなくなったら終了
+        break;
+      }
+      histEntries.push(data);
+    } catch(e) {
+      break;
+    }
+  }
+
+  histTotal = histEntries.length;
+  addLog(`${histTotal}件の履歴を取得しました`, 'ok');
+  showToast(`履歴: ${histTotal}件 ✅`, 'ok');
+  renderHistory();
+}
+
+function renderHistory() {
+  const tbody = document.getElementById('hist-tbody');
+  const start = histPage * HIST_PER_PAGE;
+  const items = histEntries.slice(start, start + HIST_PER_PAGE);
+  const total = Math.ceil(histTotal / HIST_PER_PAGE) || 1;
+
+  document.getElementById('hist-page-label').textContent =
+    `${histPage + 1} / ${total}`;
+
+  if (items.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:20px">データなし</td></tr>';
+    return;
+  }
+
+  const RESULTS = ['散水', '雨でスキップ', '手動', 'エラー'];
+  const COLORS  = ['badge-on','badge-rain','badge-on','badge-off'];
+
+  tbody.innerHTML = items.map(e => {
+    const dt  = (e.ts && e.ts > 1700000000) ? new Date(e.ts * 1000).toLocaleString('ja-JP',
+      {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '--';
+    const res = (e.res !== undefined && RESULTS[e.res]) ? RESULTS[e.res] : '不明';
+    const cls = (e.res !== undefined && COLORS[e.res]) ? COLORS[e.res] : 'badge-off';
+    const rainMin = e.rain !== undefined ? e.rain : 0;
+    const pumpSec = e.sec !== undefined ? e.sec : (e.pump !== undefined ? e.pump : 0);
+    return `<tr>
+      <td>${dt}</td>
+      <td><span class="badge ${cls}">${res}</span></td>
+      <td>${rainMin}分</td>
+      <td>${pumpSec}秒</td>
+    </tr>`;
+  }).join('');
+}
+
+function histPrev() {
+  if (histPage > 0) { histPage--; renderHistory(); }
+}
+function histNext() {
+  if ((histPage + 1) * HIST_PER_PAGE < histTotal) { histPage++; renderHistory(); }
+}
+
+// ===== 定期更新 =====
+setInterval(() => {
+  if (chars.status) refreshStatus();
+}, 10000); // 10秒ごと
+
+
+// ===== PWA & QR Modal =====
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  });
+}
+
+function openQrModal() {
+  document.getElementById('qr-modal').style.display = 'flex';
+}
+function closeQrModal() {
+  document.getElementById('qr-modal').style.display = 'none';
+}
+
+addLog('Web Bluetooth BLE コントローラー 起動', 'info');
+addLog('Chrome / Edge で「LushGate に接続」ボタンを押してください', 'info');
+</script>
+
+<!-- QR Code Modal -->
+<div id="qr-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;max-width:380px;width:90%;text-align:center;box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);">
+    <h3 style="margin-top:0;color:var(--text);font-size:1.2rem;">📱 LushGate Webアプリ QRコード</h3>
+    <p style="font-size:0.85rem;color:var(--muted);margin-bottom:16px;">
+      本体ケースに貼っておくと、スマホカメラから一発でこのアプリを開けます。（オフラインでも動作）
+    </p>
+    <div style="background:#ffffff;padding:12px;border-radius:12px;display:inline-block;margin-bottom:16px;">
+      <img src="qrcode_print.png" alt="LushGate App QR" style="width:200px;height:200px;display:block;">
+    </div>
+    <div style="font-size:0.75rem;color:var(--muted);margin-bottom:16px;word-break:break-all;">
+      https://amekusa03.github.io/LushGate/
+    </div>
+    <div style="display:flex;gap:8px;justify-content:center;">
+      <a href="qrcode_print.png" download="lushgate_qr.png" class="btn btn-secondary" style="text-decoration:none;font-size:0.85rem;">💾 画像保存</a>
+      <button class="btn btn-primary" onclick="closeQrModal()" style="font-size:0.85rem;">閉じる</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

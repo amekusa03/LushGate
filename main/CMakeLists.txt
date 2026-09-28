@@ -1,21 +1,19 @@
+# ===========================================================
+# LushGate - BLE専用ビルド (超低消費電力・電池駆動最適化)
+# ===========================================================
 idf_component_register(
     SRCS
         "main.c"
         "rain_sensor.c"
         "pump_control.c"
         "storage_manager.c"
-        "wifi_ap.c"
-        "web_server.c"
+        "ble_gatt.c"
     INCLUDE_DIRS
         "."
-    EMBED_FILES
-        "web/index.html"
     REQUIRES
         nvs_flash
-        esp_wifi
-        esp_http_server
         esp_adc
         driver
         esp_timer
-        esp_netif
+        bt
 )

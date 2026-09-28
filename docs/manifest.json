@@ -1,0 +1,21 @@
+{
+  "name": "LushGate BLE Controller",
+  "short_name": "LushGate",
+  "description": "ソーラー自動灌水システム LushGate コントローラー (オフライン対応)",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#10b981",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

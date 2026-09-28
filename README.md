@@ -9,7 +9,7 @@
 
 **LushGate** is an autonomous, ultra-low-power automatic irrigation system powered by the **ESP32-C3**, designed specifically for off-grid mountain regions and open-field agriculture.
 
-It determines rainfall levels using a custom-designed corrosion-resistant polarity-reversing rain sensor, and safely actuates a 3V fuel transfer pump via an optocoupler isolation module and a mechanical relay powered by a 12V LiFePO4 solar battery system.
+It determines rainfall levels using a custom-designed corrosion-resistant polarity-reversing rain sensor, and safely actuates a 3V fuel transfer pump via an optocoupler isolation module and a mechanical relay powered independently by 4x AA batteries (6V via USB) for the ESP32 and 2x AA batteries (3V) for the pump.
 
 For on-site configuration and maintenance without internet connectivity or cellular signals, LushGate features an on-demand **Wi-Fi SoftAP + mDNS (`http://lushgate.local`) + Responsive Web UI**. You can sync RTC time with a single tap from your smartphone browser, configure schedule/sleep parameters (saved to NVS), inspect irrigation logs, and export CSV reports.
 
@@ -19,7 +19,7 @@ For on-site configuration and maintenance without internet connectivity or cellu
 
 - **Ultra-Low Power Operation (Deep Sleep)**:
   - Wi-Fi and Bluetooth are completely powered down during standby. The ESP32 wakes up periodically (default: every 3 minutes) for a few milliseconds to take a pulse measurement and accumulate rainfall data.
-- **On-Demand Wi-Fi AP & mDNS (`http://lushgate.local`)**:
+- **On-Demand BLE Mode & mDNS (`http://lushgate.local`)**:
   - No external router or internet connection needed. Simply hold the physical `BOOT button` on-site for 2 seconds to launch the SoftAP and connect directly from any smartphone or PC.
 - **One-Tap RTC Time Sync**:
   - Synchronizes the ESP32 internal Real-Time Clock with your smartphone's browser clock in one tap.
@@ -42,7 +42,7 @@ For on-site configuration and maintenance without internet connectivity or cellu
 | **GPIO1** | `RAIN_SENSE_B` | ADC1_CH1 / InOut | Rain Sensor Electrode B (Pulse drive / ADC read) |
 | **GPIO7** | `PUMP_CTRL` | Digital Output | Pump control output (Active-High: Optocoupler module input) |
 | **GPIO8** | `STATUS_LED` | Digital Output | Status indicator LED (Blinks during AP mode) |
-| **GPIO9** | `USER_BUTTON` | Digital Input (Pull-up) | BOOT button (Hold for 2s to start Wi-Fi AP) |
+| **GPIO9** | `USER_BUTTON` | Digital Input (Pull-up) | BOOT button (Hold for 2s to start BLE Mode) |
 | **GPIO2-6, 10** | *(Reserved)* | GPIO / ADC1 | Reserved for future expansion (float switch, soil moisture sensor, etc.) |
 | **GPIO18/19**| `USB_D- / D+`| Native USB | Firmware flashing and USB serial debugging |
 
@@ -54,22 +54,14 @@ For on-site configuration and maintenance without internet connectivity or cellu
 
 ```mermaid
 graph TD
-    Solar[Solar Panel 10W] --> SolarCharger[Solar Charge Controller<br/>w/ Overcharge/Overdischarge Protection]
-    SolarCharger --> Battery[LiFePO4 12V 6Ah]
-    SolarCharger -->|LOAD Terminals 12V| StepDown33[DC-DC Buck 3.3V]
-    SolarCharger -->|LOAD Terminals 12V| StepDownPump[DC-DC Buck 3.0V or 2x D Batteries]
-    SolarCharger -->|LOAD Terminals 12V| RelayPower[Relay Power 12V]
-    
-    StepDown33 --> ESP32[ESP32-C3]
+    BatteryESP[4x AA Batteries (DC 6V)] -->|USB Power| ESP32[ESP32-C3]
     
     ESP32 -->|GPIO0 (OUT) / GPIO1 (VCC)| RainSensor[J3Y Amplified Rain Sensor]
-    ESP32 -->|GPIO7 / GND| OptoModule[Optocoupler Isolation Module]
+    ESP32 -->|GPIO7 (IN) / 3.3V / GND| RelayModule[JQC-3F 3V Relay Module]
     ESP32 -->|GPIO8| LED[Status LED]
-    ESP32 -->|GPIO9| Button[BOOT Button / AP Launch]
+    ESP32 -->|GPIO9| Button[BOOT Button / AP Start]
     
-    RelayPower --> RelayModule[Mechanical Relay 12V]
-    OptoModule -->|Output Contacts / Signal| RelayModule
-    StepDownPump -->|Contacts COM/NO| RelayModule --> Pump[Fuel Transfer Pump 3V]
+    BatteryPump[2x AA Batteries (DC 3V)] -->|Relay COM/NO| RelayModule --> Pump[3V Fuel Transfer Pump]
 ```
 
 ---

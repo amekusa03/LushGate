@@ -1,18 +1,34 @@
 # ESP32-C3 Target Configuration
 CONFIG_IDF_TARGET="esp32c3"
 
-# Flash Configuration (Default 4MB)
+# Flash Configuration (4MB)
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 
 # FreeRTOS & System
 CONFIG_FREERTOS_HZ=1000
 
-# HTTP Server Configuration
-CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
-CONFIG_HTTPD_MAX_URI_LEN=512
-
-# Wi-Fi Configuration
-CONFIG_ESP_WIFI_SOFTAP_SUPPORT=y
+# ============================================
+# 省電力 CPU クロック: 80MHz (160MHz比で消費電力約40%削減)
+# ============================================
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_80=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ=80
 
 # Log Level
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# ============================================
+# BLE (NimBLE) 超低消費電力設定
+# ============================================
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_CONTROLLER_ENABLED=y
+CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=y
+CONFIG_BT_NIMBLE_ROLE_BROADCASTER=y
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
+CONFIG_BT_NIMBLE_LOG_LEVEL=1
+
+# ============================================
+# カスタムパーティションテーブル
+# ============================================
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
