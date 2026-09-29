@@ -17,6 +17,7 @@ typedef struct {
     uint16_t rain_accum_min;
     uint8_t  last_water_day;
     uint8_t  reserved;
+    uint32_t last_water_epoch;
 } __attribute__((packed)) last_state_t;
 
 typedef struct {
@@ -128,7 +129,7 @@ esp_err_t storage_save_config(const lushgate_config_t *config)
     return err;
 }
 
-esp_err_t storage_save_last_state(uint32_t timestamp, uint16_t rain_accum_min, uint8_t last_water_day)
+esp_err_t storage_save_last_state(uint32_t timestamp, uint16_t rain_accum_min, uint8_t last_water_day, uint32_t last_water_epoch)
 {
     nvs_handle_t h;
     esp_err_t err = nvs_open(NVS_NAMESPACE_CONFIG, NVS_READWRITE, &h);
@@ -138,22 +139,23 @@ esp_err_t storage_save_last_state(uint32_t timestamp, uint16_t rain_accum_min, u
         .timestamp = timestamp,
         .rain_accum_min = rain_accum_min,
         .last_water_day = last_water_day,
-        .reserved = 0
+        .reserved = 0,
+        .last_water_epoch = last_water_epoch
     };
 
     err = nvs_set_blob(h, KEY_LAST_STATE, &st, sizeof(last_state_t));
     if (err == ESP_OK) {
         err = nvs_commit(h);
-        ESP_LOGD(TAG, "Saved last state to NVS: Epoch=%lu, Rain=%d min, LastWaterDay=%d",
-                 (unsigned long)timestamp, rain_accum_min, last_water_day);
+        ESP_LOGD(TAG, "Saved last state to NVS: Epoch=%lu, Rain=%d min, LastWaterDay=%d, LastWaterEpoch=%lu",
+                 (unsigned long)timestamp, rain_accum_min, last_water_day, (unsigned long)last_water_epoch);
     }
     nvs_close(h);
     return err;
 }
 
-esp_err_t storage_load_last_state(uint32_t *timestamp, uint16_t *rain_accum_min, uint8_t *last_water_day)
+esp_err_t storage_load_last_state(uint32_t *timestamp, uint16_t *rain_accum_min, uint8_t *last_water_day, uint32_t *last_water_epoch)
 {
-    if (!timestamp || !rain_accum_min || !last_water_day) return ESP_ERR_INVALID_ARG;
+    if (!timestamp || !rain_accum_min || !last_water_day || !last_water_epoch) return ESP_ERR_INVALID_ARG;
 
     nvs_handle_t h;
     esp_err_t err = nvs_open(NVS_NAMESPACE_CONFIG, NVS_READONLY, &h);
@@ -164,10 +166,11 @@ esp_err_t storage_load_last_state(uint32_t *timestamp, uint16_t *rain_accum_min,
     err = nvs_get_blob(h, KEY_LAST_STATE, &st, &size);
     nvs_close(h);
 
-    if (err == ESP_OK && size == sizeof(last_state_t)) {
+    if (err == ESP_OK) {
         *timestamp = st.timestamp;
         *rain_accum_min = st.rain_accum_min;
         *last_water_day = st.last_water_day;
+        *last_water_epoch = (size >= sizeof(last_state_t)) ? st.last_water_epoch : 0;
         return ESP_OK;
     }
     return ESP_FAIL;

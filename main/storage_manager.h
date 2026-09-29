@@ -42,8 +42,8 @@ esp_err_t storage_load_config(lushgate_config_t *config);
 esp_err_t storage_save_config(const lushgate_config_t *config);
 
 // 直近の状態（時刻、累積雨量、当日散水完了日）のバックアップと復元
-esp_err_t storage_save_last_state(uint32_t timestamp, uint16_t rain_accum_min, uint8_t last_water_day);
-esp_err_t storage_load_last_state(uint32_t *timestamp, uint16_t *rain_accum_min, uint8_t *last_water_day);
+esp_err_t storage_save_last_state(uint32_t timestamp, uint16_t rain_accum_min, uint8_t last_water_day, uint32_t last_water_epoch);
+esp_err_t storage_load_last_state(uint32_t *timestamp, uint16_t *rain_accum_min, uint8_t *last_water_day, uint32_t *last_water_epoch);
 
 esp_err_t storage_add_history(const water_history_entry_t *entry);
 uint16_t  storage_get_history_count(void);

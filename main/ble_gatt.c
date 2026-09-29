@@ -1,3 +1,4 @@
+#include "pump_control.h"
 /**
  * @file ble_gatt.c
  * @brief LushGate BLE GATTサービス実装 (NimBLE) - Android / iOS / Web Bluetooth 完全対応
@@ -77,7 +78,7 @@ static void build_status_json(char *buf, size_t max_len)
     time_t now = time(NULL);
     bool time_synced = (now >= 1700000000);
     int rain = s_status ? s_status->rain_accum_min : 0;
-    int pump = s_status ? s_status->pump_running : 0;
+    int pump = pump_is_running() ? 1 : 0;
     int day  = s_status ? s_status->last_water_day : 255;
     int hist = storage_get_history_count();
     int mv   = s_status ? s_status->rain_raw_mv : 0;
@@ -466,8 +467,10 @@ void ble_gatt_stop(void)
 {
     ble_gap_adv_stop();
     nimble_port_stop();
+    nimble_port_deinit();
+    s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
     s_status_notify_enabled = false;
-    ESP_LOGI(TAG, "BLE GATT service stopped");
+    ESP_LOGI(TAG, "BLE GATT service stopped & deinitialized");
 }
 
 void ble_gatt_notify_status(void)

@@ -1,3 +1,4 @@
+#include "driver/uart.h"
 /**
  * @file main.c
  * @brief LushGate - ソーラー＆乾電池駆動 自動灌水コントローラー (BLE専用・堅牢版)
@@ -69,6 +70,8 @@ static void init_hardware(const lushgate_config_t *cfg)
         .intr_type    = GPIO_INTR_DISABLE,
     };
     gpio_config(&btn_conf);
+    gpio_sleep_set_direction(PIN_USER_BUTTON, GPIO_MODE_INPUT);
+    gpio_sleep_set_pull_mode(PIN_USER_BUTTON, GPIO_PULLUP_ONLY);
 
     // センサー＆ポンプドライバ初期化
     rain_sensor_init();
@@ -104,15 +107,19 @@ static void on_ble_config_changed(const lushgate_config_t *new_cfg)
 
 static void on_ble_pump_cmd(uint8_t cmd, uint16_t duration_sec)
 {
-    if (cmd == 1) { // 散水ON
-        uint16_t sec = duration_sec > 0 ? duration_sec : 180;
-        ESP_LOGI(TAG, "Manual Watering Started via BLE (%d sec)", sec);
-        pump_set_state(true);
+    if (cmd == 1 || cmd == 2) { // 散水ON (1: 連続ON, 2: 指定秒数タイマー)
+        uint16_t sec = duration_sec > 0 ? duration_sec : 30;
+        ESP_LOGI(TAG, "Manual Watering Started via BLE (cmd=%d, duration=%d sec)", cmd, sec);
+        if (cmd == 2) {
+            pump_manual_start(sec);
+        } else {
+            pump_set_state(true);
+        }
         s_ble_status.pump_running = true;
         ble_gatt_notify_status();
-    } else {        // 散水OFF
+    } else {        // 散水OFF (cmd == 0)
         ESP_LOGI(TAG, "Manual Watering Stopped via BLE");
-        pump_set_state(false);
+        pump_manual_stop();
         s_ble_status.pump_running = false;
         ble_gatt_notify_status();
     }
@@ -240,27 +247,44 @@ static void run_normal_monitoring_cycle(const lushgate_config_t *cfg)
     struct tm timeinfo;
     localtime_r(&now, &timeinfo);
 
-    // 散水時刻ウィンドウ判定 (指定時刻から15分以内)
-    bool is_sched_time = (timeinfo.tm_hour == cfg->sched_hour) &&
-                         (timeinfo.tm_min >= cfg->sched_min && timeinfo.tm_min < (cfg->sched_min + 15));
+    // 散水時刻ウィンドウ判定 (指定時刻の「分」が完全一致した1分間のみ実行: 3分サイクルで多重実行しないよう厳格化)
+    int sched_total_min = (int)cfg->sched_hour * 60 + (int)cfg->sched_min;
+    int cur_total_min   = (int)timeinfo.tm_hour * 60 + (int)timeinfo.tm_min;
+    int diff_min        = cur_total_min - sched_total_min;
+    if (diff_min < 0) diff_min += 1440;
+    bool is_sched_time  = (diff_min == 0); // 分が完全一致する場合のみ (1分間ウィンドウ)
 
-    // 二重散水ガード:
-    //  - 本日の日付 (tm_mday) で未判定であること
-    //  - 前回散水時刻から最低12時間 (43200秒) 以上経過していること
+    // 1日1回厳格制御 & 二重散水ガード:
+    //  - 本日の日付 (tm_mday) で未判定であること (s_last_water_day != timeinfo.tm_mday)
+    //  - 前回散水時刻から最低20時間 (72000秒) 以上経過していること
     bool already_watered_today = (s_last_water_day == timeinfo.tm_mday);
-    bool within_12h = (s_last_water_epoch > 0 && (now >= s_last_water_epoch) && ((now - s_last_water_epoch) < 43200));
+    bool within_20h = (s_last_water_epoch > 0 && (now >= s_last_water_epoch) && ((now - s_last_water_epoch) < 72000));
 
-    if (is_sched_time && !already_watered_today && !within_12h) {
+    // ★詳細ログ (毎サイクル出力してデバッグ可能にする)★
+    ESP_LOGI(TAG, "TimeCheck: now=%02d:%02d sched=%02d:%02d diff=%d | AlreadyWatered=%d(Day:%d/Last:%d) Within20h=%d(LastEpoch:%lu)",
+             timeinfo.tm_hour, timeinfo.tm_min,
+             (int)cfg->sched_hour, (int)cfg->sched_min, diff_min,
+             already_watered_today, timeinfo.tm_mday, s_last_water_day,
+             within_20h, (unsigned long)s_last_water_epoch);
+
+    if (already_watered_today || within_20h) {
+        ESP_LOGI(TAG, "GUARD: Watering blocked (AlreadyToday=%d Day=%d/Last=%d, Within20h=%d LastEpoch=%lu)",
+                 already_watered_today, timeinfo.tm_mday, s_last_water_day,
+                 within_20h, (unsigned long)s_last_water_epoch);
+        return;
+    }
+
+    if (is_sched_time) {
         ESP_LOGI(TAG, "⏰ Schedule reached! (%02d:%02d) Checking rain accumulation...",
                  timeinfo.tm_hour, timeinfo.tm_min);
 
-        // ★重要: 多重散水防止のため、実行判定直後に「本日散水済み」フラグとEpochを確定してNVSに即時保存★
+        // ★重要: 1日1回を確定するため、実行前に「本日散水済みフラグ」「Epoch」を即座にNVSコミット★
         s_last_water_day = timeinfo.tm_mday;
         s_last_water_epoch = (uint32_t)now;
         uint16_t current_rain = s_accumulated_rain_min;
         s_accumulated_rain_min = 0; // 雨量カウンタを新サイクル用にリセット
 
-        storage_save_last_state((uint32_t)now, s_accumulated_rain_min, s_last_water_day);
+        storage_save_last_state((uint32_t)now, s_accumulated_rain_min, s_last_water_day, s_last_water_epoch);
         s_last_nvs_backup_time = (uint32_t)now;
 
         water_history_entry_t entry = {
@@ -289,11 +313,8 @@ static void run_normal_monitoring_cycle(const lushgate_config_t *cfg)
 
         // 散水完了後の最新時刻でNVS状態を再更新
         time_t finished_now = time(NULL);
-        storage_save_last_state((uint32_t)finished_now, s_accumulated_rain_min, s_last_water_day);
+        storage_save_last_state((uint32_t)finished_now, s_accumulated_rain_min, s_last_water_day, s_last_water_epoch);
         s_last_nvs_backup_time = (uint32_t)finished_now;
-    } else if (is_sched_time) {
-        ESP_LOGD(TAG, "⏰ Schedule window active, but already watered/skipped today (Day: %d, LastDay: %d, Within12h: %d)",
-                 timeinfo.tm_mday, s_last_water_day, within_12h);
     }
 }
 
@@ -327,15 +348,17 @@ void app_main(void)
         uint32_t saved_time = 0;
         uint16_t saved_rain = 0;
         uint8_t saved_water_day = 0xFF;
-        if (storage_load_last_state(&saved_time, &saved_rain, &saved_water_day) == ESP_OK && saved_time >= 1700000000) {
+        uint32_t saved_water_epoch = 0;
+        if (storage_load_last_state(&saved_time, &saved_rain, &saved_water_day, &saved_water_epoch) == ESP_OK && saved_time >= 1700000000) {
             struct timeval tv = { .tv_sec = (time_t)saved_time, .tv_usec = 0 };
             settimeofday(&tv, NULL);
             if (s_accumulated_rain_min == 0) s_accumulated_rain_min = saved_rain;
             if (s_last_water_day == 0xFF)    s_last_water_day = saved_water_day;
+            if (s_last_water_epoch == 0)     s_last_water_epoch = saved_water_epoch;
             s_last_nvs_backup_time = saved_time;
             time_is_valid = true;
-            ESP_LOGI(TAG, "✅ Restored RTC Time & Rain from NVS! (Epoch: %lu, Rain: %d min, LastDay: %d)",
-                     (unsigned long)saved_time, s_accumulated_rain_min, s_last_water_day);
+            ESP_LOGI(TAG, "✅ Restored RTC Time & Rain from NVS! (Epoch: %lu, Rain: %d min, LastDay: %d, LastEpoch: %lu)",
+                     (unsigned long)saved_time, s_accumulated_rain_min, s_last_water_day, (unsigned long)s_last_water_epoch);
         } else {
             ESP_LOGW(TAG, "⚠️ RTC not synced yet. Starting BLE mode automatically for Web App setup...");
         }
@@ -362,7 +385,7 @@ void app_main(void)
             // 設定画面から抜けた直後、最新の時刻・雨量を即座にNVSバックアップ
             now = time(NULL);
             if (now >= 1700000000) {
-                storage_save_last_state((uint32_t)now, s_accumulated_rain_min, s_last_water_day);
+                storage_save_last_state((uint32_t)now, s_accumulated_rain_min, s_last_water_day, s_last_water_epoch);
                 s_last_nvs_backup_time = (uint32_t)now;
             }
         }
@@ -378,7 +401,7 @@ void app_main(void)
         now = time(NULL);
         if (now >= 1700000000) {
             if ((now - s_last_nvs_backup_time >= 900) || (s_accumulated_rain_min > 0 && (now - s_last_nvs_backup_time >= 180))) {
-                storage_save_last_state((uint32_t)now, s_accumulated_rain_min, s_last_water_day);
+                storage_save_last_state((uint32_t)now, s_accumulated_rain_min, s_last_water_day, s_last_water_epoch);
                 s_last_nvs_backup_time = (uint32_t)now;
             }
         }
@@ -395,10 +418,14 @@ void app_main(void)
 
         ESP_LOGI(TAG, "Entering Light Sleep (%d sec)... [Press BOOT button anytime for BLE Mode]", config.sleep_interval_sec);
         fflush(stdout);
-        esp_rom_delay_us(1000);
+        uart_wait_tx_idle_polling(0);
 
         // Light Sleep 突入 (RAM保持、RTC発振継続、消費電流 約0.13mA)
         esp_light_sleep_start();
+
+        // 目覚めた直後にGPIO wakeup解除 (次回の安定動作のため)
+        gpio_wakeup_disable(PIN_USER_BUTTON);
+        esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
 
         // --- 目覚めた後の処理 ---
         esp_sleep_wakeup_cause_t wake_reason = esp_sleep_get_wakeup_cause();
