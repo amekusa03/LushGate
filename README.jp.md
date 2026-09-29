@@ -2,8 +2,8 @@
 
 [English](README.md) | **日本語**
 
-> 🚧 **ステータス: 開発中（仕掛り / ハードウェア部品発注中）**  
-> 本リポジトリは現在、部品発注およびプロトタイプ製作段階の仕掛り状態です。ファームウェア設計・回路設計・Web UIの先行実装が完了しています。
+> ⚡ **ステータス: 実装完了・フィールドテスト中**  
+> ファームウェア・回路・BLE Web UIの実装が完了し、現在フィールドテストを実施中です。
 
 ---
 
@@ -122,46 +122,42 @@ ESP32 GND (信号GND) -----------------------> | GND (電源GND)    |
 
 ---
 
-## 4. 運用モードとWeb操作ガイド
+## 4. 運用モードとBLE操作ガイド
 
 ### 4.1 モード切り替え
 - **通常運用モード (Normal Mode)**:
   - Light Sleepで設定周期（デフォルト3分）ごとに起動し、雨センサーをチェック・積算。
   - 朝の設定時刻（デフォルト07:00）に24h累積降雨が閾値（デフォルト60分）未満の場合、ポンプを自動デューティ駆動（3分ON / 2分OFF、正味10分）。
   - 散水完了・スキップ結果をNVS履歴に保存後、Light Sleepへ移行。
-- **APメンテナンスモード (Web UI)**:
-  - `BOOTボタン (GPIO9)` を **2秒間長押し** するとLEDが点滅し、SoftAPとmDNSが起動。
-  - スマホで Wi-Fi SSID: `LushGate-XXXX` に接続後、ブラウザで **`http://lushgate.local`** (または `http://192.168.4.1`) にアクセス。
-  - 5分間無操作（または画面上の「スリープへ」ボタン押下）で自動停止しLight Sleepへ復帰。
+- **BLEモード (Web Bluetooth UI)**:
+  - `BOOTボタン (GPIO9)` を押すとLEDが点滅し、BLEアドバタイジングが開始。
+  - スマホのブラウザで `https://amekusa03.github.io/LushGate/` を開き、「**LushGate に接続**」をタップするとBLE接続が確立。Wi-Fi接続・ルーター不要。
+  - クライアント切断またはBLE操作完了後、Light Sleepへ自動復帰。
 
-### 4.2 Web UI 機能一覧
-1. **ステータス & 時刻同期**:
-   - ESP32内蔵RTCの現在時刻、本日累積雨量、雨センサー生ADC値・電圧、次回判定時刻を表示。
-   - 「📱 スマホ時刻と同期」ボタンで1タップ補正。
-2. **設定画面 (NV保存)**:
-   - 散水時刻 (時:分)、雨監視周期 (分)、散水スキップ降雨閾値 (分)、雨滴判定ADC閾値 (mV)、ポンプON/OFF/総散水時間、APタイムアウトを変更してNVSへ即時保存。
-3. **散水履歴**:
-   - 過去60回分の散水実績（日時、降雨積算、散水可否、稼働秒数）を表示。
-   - CSVファイルとして直接ダウンロード可能。
-4. **手動テスト**:
-   - 30秒間のポンプ試運転、即時停止、雨センサー即時測定。
+### 4.2 Web Bluetooth UI 機能一覧
+1. **ステータス表示 & 時刻同期**:
+   - ESP32内蔵RTCの現在時刻、本日累積雨量、雨センサー電圧、ポンプ稼働状態をリアルタイム取得・表示。
+   - 「📱 スマホ時刻と同期」ボタンで1タップRTC補正。
+2. **設定変更 (NVS保存)**:
+   - 散水時刻 (時:分)、雨監視周期 (分)、散水スキップ降雨閾値 (分)、雨滴判定ADC閾値 (mV)、ポンプON/OFF/総散水時間を変更してNVSへ即時保存。
+3. **散水履歴閲覧**:
+   - 過去60回分の散水実績（日時、降雨積算、散水可否、稼働秒数）をインデックス指定で取得・表示。
+4. **手動散水コマンド**:
+   - 任意秒数のポンプ手動駆動（`PUMP_CMD` キャラクタリスティック経由）、即時停止。
 
 ---
 
-## 5. Web REST API 仕様
+## 5. BLE GATT インターフェース仕様
 
-| Method | URI | 説明 |
-|---|---|---|
-| `GET` | `/` | Web UI シングルページ (HTML/CSS/JS) |
-| `GET` | `/api/status` | RTC時刻、雨量積算、センサ生値、設定値の取得 |
-| `POST`| `/api/time` | 時刻同期 (`{"epoch": 1726904123}`) |
-| `GET` | `/api/config` | 現在の設定値一覧取得 |
-| `POST`| `/api/config` | 設定値の更新・NVS保存 |
-| `GET` | `/api/history` | 散水履歴一覧 (JSON) |
-| `GET` | `/api/history/csv` | 散水履歴のCSVダウンロード |
-| `POST`| `/api/history/clear` | 散水履歴の全消去 |
-| `POST`| `/api/pump/test` | ポンプ手動駆動 (`{"action":"start","duration_sec":30}`) |
-| `POST`| `/api/system/sleep` | APモードを終了し即時Light Sleepへ移行 |
+**Service UUID**: `12340000-5678-1234-5678-000000000000`
+
+| キャラクタリスティック | UUID下4桁 | プロパティ | 説明 |
+|---|---|---|---|
+| `CONFIG`   | `0001` | Read / Write | `lushgate_config_t` バイナリ（設定値の読み書き・NVS保存） |
+| `TIMESYNC` | `0002` | Write        | UNIX Epoch を `uint32LE` で書き込み → RTC更新 |
+| `PUMP_CMD` | `0003` | Write        | `0x00`=OFF, `0x01`=ON, `[0x02, sec_lo, sec_hi]`=指定秒ON |
+| `STATUS`   | `0004` | Read / Notify| JSON文字列（雨量・ポンプ状態・時刻・センサー生値） |
+| `HISTORY`  | `0005` | Read / Write | Write: インデックス `uint16LE` / Read: 当該エントリJSON |
 
 ---
 
@@ -173,28 +169,42 @@ LushGate/
 ├── README.jp.md            # 日本語版システム仕様書 & 取扱説明書
 ├── LushGate_spec.md        # 原本仕様書
 ├── CMakeLists.txt          # ESP-IDF プロジェクトCMake
+├── sdkconfig.defaults      # ESP-IDF デフォルト設定 (NimBLE / Light Sleep 等)
+├── partitions.csv          # カスタムパーティションテーブル
+├── docs/                   # GitHub Pages 公開ディレクトリ
+│   ├── index.html          # Web Bluetooth PWA アプリ本体
+│   ├── manifest.json       # PWA マニフェスト
+│   ├── sw.js               # Service Worker (オフラインキャッシュ)
+│   ├── icon-192.png        # PWA アプリアイコン (192px)
+│   ├── icon-512.png        # PWA アプリアイコン (512px)
+│   ├── qrcode.png          # アプリURL QRコード
+│   ├── qrcode_print.png    # 印刷用 QRコード
+│   ├── qrcode.svg          # SVG QRコード
+│   ├── requirements_definition.html # 要件定義書 & システム構成図
+│   └── qr/
+│       ├── print_label_ble.html     # BLE版制御ボックス用ラベル印刷ページ
+│       └── qr_ble_app.png           # BLE版アプリ URL QRコード
+├── tools/
+│   └── lushgate_ble_app.html        # BLE アプリ スタンドアロン版 (開発・配布用)
 └── main/
-    ├── CMakeLists.txt      # コンポーネントCMake & Webファイル埋め込み
+    ├── CMakeLists.txt      # コンポーネントCMake
+    ├── idf_component.yml   # NimBLE依存関係定義
     ├── main.c              # メイン制御フロー & Light Sleep / スケジュール管理
     ├── lushgate_pins.h     # GPIOピンアサイン定義
+    ├── ble_gatt.c/.h       # BLE GATTサービス (NimBLE) & キャラクタリスティック定義
     ├── rain_sensor.c/.h    # 極性反転・低消費電力雨センサードライバ
-    ├── pump_control.c/.h   # ポンプデューティ駆動 & 手動テストドライバ
-    ├── storage_manager.c/.h# NVS設定管理 & 履歴リングバッファ
-    ├── wifi_ap.c/.h        # SoftAP 起動管理 (`http://192.168.4.1`)
-    ├── web_server.c/.h     # HTTPサーバー & RESTful API 実装
-    └── web/
-        └── index.html      # モダンWeb UI (SPA / HTML5+CSS+JS)
+    ├── pump_control.c/.h   # ポンプデューティ駆動 & 手動コマンドドライバ
+    └── storage_manager.c/.h# NVS設定管理 & 履歴リングバッファ
 ```
 
 ---
 
 ## 7. ビルド & 書き込み手順 (ESP-IDF)
 
-# ESP-IDF と ESP-Matter の環境をエクスポート
-source /home/kusa/esp/esp-idf/export.sh
-source /home/kusa/esp/esp-matter/export.sh
-
 ```bash
+# ESP-IDF 環境をエクスポート
+source ~/esp/esp-idf/export.sh
+
 # ターゲット設定 (ESP32-C3)
 idf.py set-target esp32c3
 

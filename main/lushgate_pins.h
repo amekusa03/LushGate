@@ -7,10 +7,10 @@
 #define PIN_RAIN_POWER      GPIO_NUM_1    // Digital Output (雨センサー給電パルス制御 VCC / 腐食・待機電力防止)
 #define PIN_PUMP_CTRL       GPIO_NUM_7    // Digital Output (フォトカプラ絶縁モジュール / リレー制御)
 #define PIN_STATUS_LED      GPIO_NUM_8    // Digital Output (オンボードLED / 状態表示)
-#define PIN_USER_BUTTON     GPIO_NUM_9    // Digital Input (BOOTボタン共用 / Pull-up / APモード起動)
+#define PIN_USER_BUTTON     GPIO_NUM_9    // Digital Input (BOOTボタン共用 / Pull-up / BLEモード起動)
 
 // Active Levels
-#define PUMP_ACTIVE_LEVEL   0             // High = リレーON
+#define PUMP_ACTIVE_LEVEL   0             // Active Low (0 = OFF レベル = High)
 #define LED_ACTIVE_LEVEL    0             // Low = LED点灯 (ESP32-C3一般的なActive Low)
 #define BUTTON_PRESSED_LEVEL 0            // Low = 押下 (Active Low)
 

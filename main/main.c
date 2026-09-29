@@ -1,4 +1,3 @@
-#include "driver/uart.h"
 /**
  * @file main.c
  * @brief LushGate - ソーラー＆乾電池駆動 自動灌水コントローラー (BLE専用・堅牢版)
@@ -26,6 +25,7 @@
 #include "esp_log.h"
 #include "esp_sleep.h"
 #include "driver/gpio.h"
+#include "driver/uart.h"
 
 #include "lushgate_pins.h"
 #include "storage_manager.h"
@@ -37,6 +37,7 @@ static const char *TAG = "LushGate";
 
 /* 前方宣言 */
 static void run_normal_monitoring_cycle(const lushgate_config_t *cfg);
+static void run_rain_accumulation_only(const lushgate_config_t *cfg);
 
 /* グローバル状態変数 (RTCスローメモリ保持: Sleep/Reset後も維持) */
 static RTC_DATA_ATTR uint16_t s_accumulated_rain_min = 0;   // 過去24h積算雨量(分)
@@ -107,14 +108,11 @@ static void on_ble_config_changed(const lushgate_config_t *new_cfg)
 
 static void on_ble_pump_cmd(uint8_t cmd, uint16_t duration_sec)
 {
-    if (cmd == 1 || cmd == 2) { // 散水ON (1: 連続ON, 2: 指定秒数タイマー)
+    if (cmd == 1 || cmd == 2) { // 散水ON (1: 指定秒数タイマー, 2: 指定秒数タイマー)
         uint16_t sec = duration_sec > 0 ? duration_sec : 30;
         ESP_LOGI(TAG, "Manual Watering Started via BLE (cmd=%d, duration=%d sec)", cmd, sec);
-        if (cmd == 2) {
-            pump_manual_start(sec);
-        } else {
-            pump_set_state(true);
-        }
+        // cmd=1/2 ともに pump_manual_start を使用 (安全タイマー付き・BLE切断後も確実停止)
+        pump_manual_start(sec);
         s_ble_status.pump_running = true;
         ble_gatt_notify_status();
     } else {        // 散水OFF (cmd == 0)
@@ -205,9 +203,10 @@ static void run_ble_maintenance_mode(lushgate_config_t *cfg)
             ble_gatt_notify_status();
         }
 
-        // BLEモード中であっても10秒ごとにスケジュール判定を実施
+        // BLEモード中であっても10秒ごとに雨量積算のみ実施
+        // (散水判定はスキップ: BLE接続中に予期せぬポンプ起動を防止)
         if (i % 10 == 0) {
-            run_normal_monitoring_cycle(cfg);
+            run_rain_accumulation_only(cfg);
         }
 
         if (i % 30 == 0 && !connected) {
@@ -218,6 +217,23 @@ static void run_ble_maintenance_mode(lushgate_config_t *cfg)
     ESP_LOGI(TAG, "Stopping BLE service & returning to low power sleep...");
     ble_gatt_stop();
     pump_set_state(false);
+}
+
+/* 雨量積算のみ (BLEモード中用: 散水判定スキップ) */
+static void run_rain_accumulation_only(const lushgate_config_t *cfg)
+{
+    rain_sensor_result_t rain_res = {0};
+    rain_sensor_read(cfg->adc_thresh_mv, &rain_res);
+
+    if (rain_res.is_raining) {
+        uint16_t add_min = (cfg->sleep_interval_sec >= 60) ? (cfg->sleep_interval_sec / 60) : 1;
+        s_accumulated_rain_min += add_min;
+        ESP_LOGI(TAG, "🌧️ [BLE mode] Rain detected! Added %d min. 24h Accum: %d min",
+                 add_min, s_accumulated_rain_min);
+    } else {
+        ESP_LOGD(TAG, "☀️ [BLE mode] No rain. 24h Accum: %d min", s_accumulated_rain_min);
+    }
+    rain_sensor_power_down();
 }
 
 /* 通常監視サイクル (雨量測定 & 散水判定) */
@@ -247,12 +263,14 @@ static void run_normal_monitoring_cycle(const lushgate_config_t *cfg)
     struct tm timeinfo;
     localtime_r(&now, &timeinfo);
 
-    // 散水時刻ウィンドウ判定 (指定時刻の「分」が完全一致した1分間のみ実行: 3分サイクルで多重実行しないよう厳格化)
+    // 散水時刻ウィンドウ判定 (スリープ周期分だけ許容して見逃しを防止)
+    // 例: 3分サイクルなら「7:00〜7:02」の間に起動すれば実行される
     int sched_total_min = (int)cfg->sched_hour * 60 + (int)cfg->sched_min;
     int cur_total_min   = (int)timeinfo.tm_hour * 60 + (int)timeinfo.tm_min;
     int diff_min        = cur_total_min - sched_total_min;
     if (diff_min < 0) diff_min += 1440;
-    bool is_sched_time  = (diff_min == 0); // 分が完全一致する場合のみ (1分間ウィンドウ)
+    int window_min      = (cfg->sleep_interval_sec / 60) + 1; // スリープ周期+1分のウィンドウ
+    bool is_sched_time  = (diff_min >= 0 && diff_min < window_min);
 
     // 1日1回厳格制御 & 二重散水ガード:
     //  - 本日の日付 (tm_mday) で未判定であること (s_last_water_day != timeinfo.tm_mday)

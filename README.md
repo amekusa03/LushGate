@@ -2,8 +2,8 @@
 
 **English** | [日本語](README.jp.md)
 
-> 🚧 **Status: Work in Progress (Waiting for Component Orders / Prototyping)**  
-> This project is currently in the work-in-progress stage while waiting for physical electronic parts to arrive. Firmware architecture, circuit schematics, and the embedded Web UI are already developed and ready for testing upon component arrival.
+> ⚡ **Status: Implementation Complete — Field Testing in Progress**  
+> Firmware, circuit, and BLE Web UI are fully implemented and currently undergoing field testing.
 
 ---
 
@@ -11,7 +11,7 @@
 
 It determines rainfall levels using a custom-designed corrosion-resistant polarity-reversing rain sensor, and safely actuates a 3V fuel transfer pump via an optocoupler isolation module and a mechanical relay powered independently by 4x AA batteries (6V via USB) for the ESP32 and 2x AA batteries (3V) for the pump.
 
-For on-site configuration and maintenance without internet connectivity or cellular signals, LushGate features an on-demand **Wi-Fi SoftAP + mDNS (`http://lushgate.local`) + Responsive Web UI**. You can sync RTC time with a single tap from your smartphone browser, configure schedule/sleep parameters (saved to NVS), inspect irrigation logs, and export CSV reports.
+For on-site configuration and maintenance without internet connectivity or cellular signals, LushGate features an on-demand **BLE (Bluetooth Low Energy) + Web Bluetooth UI** hosted as a PWA at `https://amekusa03.github.io/LushGate/`. Connect directly from your smartphone browser — no Wi-Fi router or SoftAP required. Sync RTC time with a single tap, configure schedule/sleep parameters (saved to NVS), inspect irrigation logs, and send pump commands.
 
 ---
 
@@ -19,8 +19,8 @@ For on-site configuration and maintenance without internet connectivity or cellu
 
 - **Ultra-Low Power Operation (Deep Sleep)**:
   - Wi-Fi and Bluetooth are completely powered down during standby. The ESP32 wakes up periodically (default: every 3 minutes) for a few milliseconds to take a pulse measurement and accumulate rainfall data.
-- **On-Demand BLE Mode & mDNS (`http://lushgate.local`)**:
-  - No external router or internet connection needed. Simply hold the physical `BOOT button` on-site for 2 seconds to launch the SoftAP and connect directly from any smartphone or PC.
+- **On-Demand BLE Mode (Web Bluetooth)**:
+  - No external router or internet connection needed. Press the `BOOT button` to start BLE advertising, then open `https://amekusa03.github.io/LushGate/` on your smartphone and tap "Connect to LushGate".
 - **One-Tap RTC Time Sync**:
   - Synchronizes the ESP32 internal Real-Time Clock with your smartphone's browser clock in one tap.
 - **Web-Based Configuration (NVS Persistence)**:
@@ -42,7 +42,7 @@ For on-site configuration and maintenance without internet connectivity or cellu
 | **GPIO1** | `RAIN_SENSE_B` | ADC1_CH1 / InOut | Rain Sensor Electrode B (Pulse drive / ADC read) |
 | **GPIO7** | `PUMP_CTRL` | Digital Output | Pump control output (Active-High: Optocoupler module input) |
 | **GPIO8** | `STATUS_LED` | Digital Output | Status indicator LED (Blinks during AP mode) |
-| **GPIO9** | `USER_BUTTON` | Digital Input (Pull-up) | BOOT button (Hold for 2s to start BLE Mode) |
+| **GPIO9** | `USER_BUTTON` | Digital Input (Pull-up) | BOOT button (Press to start BLE advertising mode) |
 | **GPIO2-6, 10** | *(Reserved)* | GPIO / ADC1 | Reserved for future expansion (float switch, soil moisture sensor, etc.) |
 | **GPIO18/19**| `USB_D- / D+`| Native USB | Firmware flashing and USB serial debugging |
 
@@ -59,7 +59,7 @@ graph TD
     ESP32 -->|GPIO0 (OUT) / GPIO1 (VCC)| RainSensor[J3Y Amplified Rain Sensor]
     ESP32 -->|GPIO7 (IN) / 3.3V / GND| RelayModule[JQC-3F 3V Relay Module]
     ESP32 -->|GPIO8| LED[Status LED]
-    ESP32 -->|GPIO9| Button[BOOT Button / AP Start]
+    ESP32 -->|GPIO9| Button[BOOT Button / BLE Start]
     
     BatteryPump[2x AA Batteries (DC 3V)] -->|Relay COM/NO| RelayModule --> Pump[3V Fuel Transfer Pump]
 ```
@@ -120,40 +120,37 @@ ESP32 GND (Signal GND) ------------> | IN1- (or GND)    |         +12V (Controll
 
 ---
 
-## 4. Operation Modes & Web Guide
+## 4. Operation Modes & BLE Guide
 
 ### 4.1 Operating Modes
 - **Normal Autonomous Mode**:
-  - Operates in Deep Sleep, waking every cycle (default: 3 minutes) to sample the rain sensor.
+  - Operates in Light Sleep, waking every cycle (default: 3 minutes) to sample the rain sensor.
   - At the designated morning evaluation time (default: 07:00), if total 24h rainfall is below the threshold (default: 60 minutes), the pump runs with duty cycle control (3 min ON / 2 min OFF, net 10 min).
-  - Logs the event outcome into NVS ring buffer and returns to Deep Sleep.
-- **AP Maintenance Mode (Web UI)**:
-  - Hold the `BOOT button (GPIO9)` for **2 seconds** to turn on the Wi-Fi SoftAP and mDNS service.
-  - Connect your smartphone to SSID: `LushGate-XXXX` and open **`http://lushgate.local`** (or `http://192.168.4.1`) in your browser.
-  - Returns to Deep Sleep automatically after 5 minutes of inactivity (or upon pressing "Enter Sleep" in the Web UI).
+  - Logs the event outcome into NVS ring buffer and returns to Light Sleep.
+- **BLE Mode (Web Bluetooth UI)**:
+  - Press the `BOOT button (GPIO9)` — the LED starts blinking and BLE advertising begins.
+  - Open `https://amekusa03.github.io/LushGate/` in your smartphone browser and tap **"Connect to LushGate"**. BLE connection is established with no Wi-Fi or router needed.
+  - Returns to Light Sleep automatically after client disconnection or BLE session ends.
 
-### 4.2 Web UI Features
-1. **Status & Time Sync**: Displays RTC current time, daily accumulated rain, live ADC voltage, and next scheduled check. Sync RTC with one tap.
-2. **Settings**: Edit watering time, rain check interval, rain skip threshold, ADC threshold, pump ON/OFF durations, and AP timeout.
-3. **History**: View the last 60 irrigation runs with details and download logs as CSV.
-4. **Manual Diagnostics**: Test pump for 30s with safety auto-stop and take real-time sensor readings.
+### 4.2 Web Bluetooth UI Features
+1. **Status & Time Sync**: Displays RTC current time, daily accumulated rain, live sensor voltage, and pump status in real time. Sync RTC with one tap.
+2. **Settings (NVS Persistent)**: Edit watering time, rain check interval, rain skip threshold, ADC threshold, and pump ON/OFF durations. All changes saved to NVS.
+3. **History**: Retrieve and display the last 60 irrigation log entries by index.
+4. **Manual Pump Command**: Send pump on/off commands for any duration via the `PUMP_CMD` GATT characteristic.
 
 ---
 
-## 5. Web REST API Specification
+## 5. BLE GATT Interface Specification
 
-| Method | URI | Description |
-|---|---|---|
-| `GET` | `/` | Web UI Single Page Application (HTML5/CSS/JS) |
-| `GET` | `/api/status` | Read RTC time, rain accumulation, live sensor data, configs |
-| `POST`| `/api/time` | Synchronize time (`{"epoch": 1726904123}`) |
-| `GET` | `/api/config` | Fetch current configurations |
-| `POST`| `/api/config` | Update configurations in NVS |
-| `GET` | `/api/history` | Irrigation logs (JSON) |
-| `GET` | `/api/history/csv` | Download irrigation logs as CSV file |
-| `POST`| `/api/history/clear` | Clear all irrigation logs |
-| `POST`| `/api/pump/test` | Trigger manual pump test (`{"action":"start","duration_sec":30}`) |
-| `POST`| `/api/system/sleep` | Stop AP mode and immediately enter Deep Sleep |
+**Service UUID**: `12340000-5678-1234-5678-000000000000`
+
+| Characteristic | UUID (last 4) | Properties | Description |
+|---|---|---|---|
+| `CONFIG`   | `0001` | Read / Write | `lushgate_config_t` binary — read/write device settings (NVS-persisted) |
+| `TIMESYNC` | `0002` | Write        | Write UNIX Epoch as `uint32LE` to update the ESP32 RTC |
+| `PUMP_CMD` | `0003` | Write        | `0x00`=OFF, `0x01`=ON, `[0x02, sec_lo, sec_hi]`=ON for N seconds |
+| `STATUS`   | `0004` | Read / Notify| JSON string with rain accumulation, pump state, RTC time, sensor voltage |
+| `HISTORY`  | `0005` | Read / Write | Write: index as `uint16LE` / Read: that log entry as JSON |
 
 ---
 
@@ -165,22 +162,32 @@ LushGate/
 ├── README.jp.md            # Japanese System Specification & Documentation
 ├── LushGate_spec.md        # Original Specification Notes
 ├── CMakeLists.txt          # ESP-IDF Project CMake
-├── sdkconfig.defaults      # ESP-IDF Default Configuration
-├── docs/
-│   └── requirements_definition.html # Requirements definition & system diagram
+├── sdkconfig.defaults      # ESP-IDF Default Configuration (NimBLE / Light Sleep, etc.)
+├── partitions.csv          # Custom Partition Table
+├── docs/                   # GitHub Pages deployment directory
+│   ├── index.html          # Web Bluetooth PWA application
+│   ├── manifest.json       # PWA manifest
+│   ├── sw.js               # Service Worker (offline cache)
+│   ├── icon-192.png        # PWA app icon (192px)
+│   ├── icon-512.png        # PWA app icon (512px)
+│   ├── qrcode.png          # App URL QR code
+│   ├── qrcode_print.png    # Print-optimized QR code
+│   ├── qrcode.svg          # SVG QR code
+│   ├── requirements_definition.html # Requirements definition & system diagram
+│   └── qr/
+│       ├── print_label_ble.html     # BLE label print page for control box
+│       └── qr_ble_app.png           # BLE app URL QR code
 ├── tools/
-│   └── mock_web_server.py  # Python local mock server for UI testing
+│   └── lushgate_ble_app.html        # BLE app standalone version (dev / distribution)
 └── main/
-    ├── CMakeLists.txt      # Component CMake & Web Assets Embedding
-    ├── main.c              # Main control loop & Deep Sleep / scheduling
+    ├── CMakeLists.txt      # Component CMake
+    ├── idf_component.yml   # NimBLE component dependency definition
+    ├── main.c              # Main control loop & Light Sleep / scheduling
     ├── lushgate_pins.h     # GPIO pin assignments
+    ├── ble_gatt.c/.h       # BLE GATT service (NimBLE) & characteristic definitions
     ├── rain_sensor.c/.h    # Polarity-reversing rain sensor driver
-    ├── pump_control.c/.h   # Pump duty cycle & manual test driver
-    ├── storage_manager.c/.h# NVS config storage & history ring buffer
-    ├── wifi_ap.c/.h        # SoftAP & mDNS (lushgate.local) manager
-    ├── web_server.c/.h     # Embedded HTTP server & REST API
-    └── web/
-        └── index.html      # Responsive Web UI SPA (HTML5/CSS/JS)
+    ├── pump_control.c/.h   # Pump duty cycle & manual command driver
+    └── storage_manager.c/.h# NVS config storage & history ring buffer
 ```
 
 ---

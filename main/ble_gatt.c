@@ -63,7 +63,7 @@ static ble_status_t      *s_status = NULL;
 static uint16_t           s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
 static uint16_t           s_status_val_handle = 0;
 static bool               s_status_notify_enabled = false;
-static uint8_t            s_history_read_index = 0;
+static uint16_t           s_history_read_index = 0;
 static uint8_t            s_own_addr_type;
 
 static void (*s_cfg_changed_cb)(const lushgate_config_t *new_cfg) = NULL;
@@ -183,11 +183,12 @@ static int gatt_history_write_cb(uint16_t conn_handle, uint16_t attr_handle,
     uint16_t len = OS_MBUF_PKTLEN(ctxt->om);
     if (len < 1) return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
 
-    uint8_t idx = 0;
-    int rc = ble_hs_mbuf_to_flat(ctxt->om, &idx, 1, NULL);
+    uint8_t buf[2] = {0};
+    int rc = ble_hs_mbuf_to_flat(ctxt->om, buf, len > 2 ? 2 : len, NULL);
     if (rc != 0) return BLE_ATT_ERR_UNLIKELY;
 
-    s_history_read_index = idx;
+    // uint16LE: 2バイト対応 (後方互換のため1バイトも受け付ける)
+    s_history_read_index = (uint16_t)buf[0] | ((len >= 2) ? ((uint16_t)buf[1] << 8) : 0);
     return 0;
 }
 

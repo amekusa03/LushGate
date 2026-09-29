@@ -39,7 +39,7 @@ esp_err_t pump_init(uint8_t active_level)
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << PIN_PUMP_CTRL),
         .mode = GPIO_MODE_OUTPUT,
-        .pull_up_en = (off_level == 1) ? GPIO_PULLUP_ENABLE : GPIO_PULLDOWN_DISABLE,
+        .pull_up_en = (off_level == 1) ? GPIO_PULLUP_ENABLE : GPIO_PULLUP_DISABLE,
         .pull_down_en = (off_level == 0) ? GPIO_PULLDOWN_ENABLE : GPIO_PULLDOWN_DISABLE,
         .intr_type = GPIO_INTR_DISABLE,
     };
