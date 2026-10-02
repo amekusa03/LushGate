@@ -37,7 +37,6 @@ static const char *TAG = "LushGate";
 
 /* 前方宣言 */
 static void run_normal_monitoring_cycle(const lushgate_config_t *cfg);
-static void run_rain_accumulation_only(const lushgate_config_t *cfg);
 
 /* グローバル状態変数 (RTCスローメモリ保持: Sleep/Reset後も維持) */
 static RTC_DATA_ATTR uint16_t s_accumulated_rain_min = 0;   // 過去24h積算雨量(分)
@@ -161,6 +160,7 @@ static void run_ble_maintenance_mode(lushgate_config_t *cfg)
     uint32_t max_duration_sec = cfg->ap_timeout_sec > 0 ? cfg->ap_timeout_sec : 300;
     uint32_t unconn_seconds = 0;
     uint32_t disc_countdown = 3;
+    uint32_t ble_rain_seconds = 0;
 
     for (uint32_t i = 0; i < max_duration_sec; i++) {
         bool connected = ble_gatt_is_connected();
@@ -195,18 +195,24 @@ static void run_ble_maintenance_mode(lushgate_config_t *cfg)
             rain_sensor_read(cfg->adc_thresh_mv, &live_rain);
             rain_sensor_power_down();
 
+            // BLEモード中の雨量積算: 毎秒測定し、累計60秒雨を検知するごとに1分積算
+            if (live_rain.is_raining) {
+                ble_rain_seconds++;
+                if (ble_rain_seconds >= 60) {
+                    s_accumulated_rain_min += 1;
+                    ble_rain_seconds = 0;
+                    ESP_LOGI(TAG, "🌧️ [BLE mode] 60s rain accumulated -> 24h Accum: %d min", s_accumulated_rain_min);
+                }
+            } else {
+                ble_rain_seconds = 0;
+            }
+
             s_ble_status.rain_accum_min = s_accumulated_rain_min;
             s_ble_status.pump_running   = pump_is_running();
             s_ble_status.last_water_day = s_last_water_day;
             s_ble_status.rain_raw_mv    = live_rain.voltage_mv;
             s_ble_status.is_raining     = live_rain.is_raining;
             ble_gatt_notify_status();
-        }
-
-        // BLEモード中であっても10秒ごとに雨量積算のみ実施
-        // (散水判定はスキップ: BLE接続中に予期せぬポンプ起動を防止)
-        if (i % 10 == 0) {
-            run_rain_accumulation_only(cfg);
         }
 
         if (i % 30 == 0 && !connected) {
@@ -217,23 +223,6 @@ static void run_ble_maintenance_mode(lushgate_config_t *cfg)
     ESP_LOGI(TAG, "Stopping BLE service & returning to low power sleep...");
     ble_gatt_stop();
     pump_set_state(false);
-}
-
-/* 雨量積算のみ (BLEモード中用: 散水判定スキップ) */
-static void run_rain_accumulation_only(const lushgate_config_t *cfg)
-{
-    rain_sensor_result_t rain_res = {0};
-    rain_sensor_read(cfg->adc_thresh_mv, &rain_res);
-
-    if (rain_res.is_raining) {
-        uint16_t add_min = (cfg->sleep_interval_sec >= 60) ? (cfg->sleep_interval_sec / 60) : 1;
-        s_accumulated_rain_min += add_min;
-        ESP_LOGI(TAG, "🌧️ [BLE mode] Rain detected! Added %d min. 24h Accum: %d min",
-                 add_min, s_accumulated_rain_min);
-    } else {
-        ESP_LOGD(TAG, "☀️ [BLE mode] No rain. 24h Accum: %d min", s_accumulated_rain_min);
-    }
-    rain_sensor_power_down();
 }
 
 /* 通常監視サイクル (雨量測定 & 散水判定) */
