@@ -225,6 +225,53 @@ esp_err_t storage_update_latest_history(const water_history_entry_t *entry)
     return save_history_to_nvs();
 }
 
+esp_err_t storage_record_reset_event(uint32_t timestamp, uint16_t rain_accum_min, uint8_t result_type, uint16_t rst_reason)
+{
+    if (!s_history_loaded) storage_init();
+
+    water_history_entry_t latest;
+    if (storage_get_history_entry(0, &latest) == ESP_OK) {
+        // 1. 直近の履歴が既にリセット系(BROWNOUT/RESET)なら、履歴枠を埋め尽くさないよう回数カウント(pump_run_sec)を+1して集約
+        if (latest.result == WATER_RESULT_BROWNOUT || latest.result == WATER_RESULT_RESET) {
+            if (timestamp > latest.timestamp) {
+                latest.timestamp = timestamp;
+            }
+            latest.rain_accum_min = rain_accum_min;
+            if (result_type == WATER_RESULT_BROWNOUT) {
+                latest.result = WATER_RESULT_BROWNOUT; // 電圧低下を優先表示
+            }
+            if (latest.pump_run_sec < 65535) {
+                latest.pump_run_sec += 1;
+            }
+            latest.battery_mv = rst_reason;
+            ESP_LOGW(TAG, "Aggregated reset event (Result=%d, Count=%d, Reason=%d)",
+                     latest.result, latest.pump_run_sec, rst_reason);
+            return storage_update_latest_history(&latest);
+        }
+        // 2. 散水開始直後(300秒以内)にリレーON等でリセットし、直近が暫定ERROR記録だった場合はリセット原因で上書き更新
+        if (latest.result == WATER_RESULT_ERROR && timestamp >= latest.timestamp && (timestamp - latest.timestamp) <= 300) {
+            latest.timestamp = timestamp;
+            latest.rain_accum_min = rain_accum_min;
+            latest.result = result_type;
+            latest.pump_run_sec = 1;
+            latest.battery_mv = rst_reason;
+            ESP_LOGW(TAG, "Upgraded pre-watering ERROR entry to reset event (Result=%d, Reason=%d)",
+                     latest.result, rst_reason);
+            return storage_update_latest_history(&latest);
+        }
+    }
+
+    water_history_entry_t entry = {
+        .timestamp      = timestamp,
+        .rain_accum_min = rain_accum_min,
+        .pump_run_sec   = 1, // 初回発生 (1回)
+        .result         = result_type,
+        .battery_mv     = rst_reason,
+    };
+    ESP_LOGW(TAG, "Recorded new reset event in history (Result=%d, Reason=%d)", result_type, rst_reason);
+    return storage_add_history(&entry);
+}
+
 uint16_t storage_get_history_count(void)
 {
     return s_history_store.count;

@@ -10,7 +10,9 @@ typedef enum {
     WATER_RESULT_WATERED = 0,    // 散水実行完了
     WATER_RESULT_SKIPPED_RAIN,   // 降雨十分のためスキップ
     WATER_RESULT_MANUAL,         // 手動散水実行
-    WATER_RESULT_ERROR           // エラー・異常停止
+    WATER_RESULT_ERROR,          // エラー・異常停止
+    WATER_RESULT_BROWNOUT,       // 電圧低下リセット (Brownout / Power Glitch)
+    WATER_RESULT_RESET           // 異常リセット (WDT / Panic 等)
 } water_result_t;
 
 typedef struct {
@@ -47,6 +49,7 @@ esp_err_t storage_load_last_state(uint32_t *timestamp, uint16_t *rain_accum_min,
 
 esp_err_t storage_add_history(const water_history_entry_t *entry);
 esp_err_t storage_update_latest_history(const water_history_entry_t *entry);
+esp_err_t storage_record_reset_event(uint32_t timestamp, uint16_t rain_accum_min, uint8_t result_type, uint16_t rst_reason);
 uint16_t  storage_get_history_count(void);
 esp_err_t storage_get_history_entry(uint16_t index, water_history_entry_t *entry);
 esp_err_t storage_clear_history(void);

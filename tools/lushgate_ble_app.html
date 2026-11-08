@@ -80,6 +80,8 @@ header{display:flex;align-items:center;justify-content:space-between;
 .badge-on{background:rgba(16,185,129,.2);color:#34d399;border:1px solid var(--primary)}
 .badge-off{background:rgba(100,116,139,.2);color:var(--muted);border:1px solid rgba(100,116,139,.3)}
 .badge-rain{background:rgba(56,189,248,.2);color:#7dd3fc;border:1px solid var(--accent)}
+.badge-warn{background:rgba(245,158,11,.2);color:#fbbf24;border:1px solid var(--warn)}
+.badge-err{background:rgba(239,68,68,.2);color:#f87171;border:1px solid var(--danger)}
 
 /* Form */
 .form-group{margin-bottom:13px}
@@ -833,8 +835,8 @@ function renderHistory() {
     return;
   }
 
-  const RESULTS = ['散水', '雨でスキップ', '手動', 'エラー'];
-  const COLORS  = ['badge-on','badge-rain','badge-on','badge-off'];
+  const RESULTS = ['散水', '雨でスキップ', '手動', 'エラー', '⚡ 電圧低下', '🔄 再起動'];
+  const COLORS  = ['badge-on','badge-rain','badge-on','badge-err','badge-err','badge-warn'];
 
   tbody.innerHTML = items.map(e => {
     const dt  = (e.ts && e.ts > 1700000000) ? new Date(e.ts * 1000).toLocaleString('ja-JP',
@@ -843,11 +845,13 @@ function renderHistory() {
     const cls = (e.res !== undefined && COLORS[e.res]) ? COLORS[e.res] : 'badge-off';
     const rainMin = e.rain !== undefined ? e.rain : 0;
     const pumpSec = e.sec !== undefined ? e.sec : (e.pump !== undefined ? e.pump : 0);
+    const isReset = (e.res === 4 || e.res === 5);
+    const valStr  = isReset ? `${pumpSec}回` : `${pumpSec}秒`;
     return `<tr>
       <td>${dt}</td>
       <td><span class="badge ${cls}">${res}</span></td>
       <td>${rainMin}分</td>
-      <td>${pumpSec}秒</td>
+      <td>${valStr}</td>
     </tr>`;
   }).join('');
 }

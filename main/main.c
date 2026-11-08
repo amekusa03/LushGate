@@ -421,6 +421,15 @@ void app_main(void)
         }
     }
 
+    // 3.5 異常リセット (電圧低下 / WDT / Panic等) の履歴記録 (連続発生時は1件に回数集約)
+    if (rst_reason == ESP_RST_BROWNOUT || rst_reason == ESP_RST_PWR_GLITCH) {
+        storage_record_reset_event(s_rtc_latest_epoch, s_accumulated_rain_min, WATER_RESULT_BROWNOUT, (uint16_t)rst_reason);
+    } else if (rst_reason == ESP_RST_PANIC || rst_reason == ESP_RST_INT_WDT ||
+               rst_reason == ESP_RST_TASK_WDT || rst_reason == ESP_RST_WDT ||
+               rst_reason == ESP_RST_EFUSE || rst_reason == ESP_RST_CPU_LOCKUP) {
+        storage_record_reset_event(s_rtc_latest_epoch, s_accumulated_rain_min, WATER_RESULT_RESET, (uint16_t)rst_reason);
+    }
+
     // 4. 初回起動時の動作決定
     //    ・時刻未同期なら自動でBLEモード起動
     //    ・起動時にBOOTボタン押下があれば即座にBLEモード起動
