@@ -43,6 +43,8 @@ static RTC_DATA_ATTR uint16_t s_accumulated_rain_min = 0;   // 過去24h積算�
 static RTC_DATA_ATTR uint8_t  s_last_water_day       = 0xFF; // 本日散水済みチェック(日: 1-31)
 static RTC_DATA_ATTR uint32_t s_last_water_epoch     = 0;    // 前回散水時刻(Epoch)
 static RTC_DATA_ATTR uint32_t s_last_nvs_backup_time = 0;   // 前回NVS保存時刻(Epoch)
+static RTC_DATA_ATTR uint32_t s_rtc_latest_epoch     = 0;   // 直近の有効時刻(Epoch: Reset時の巻き戻り防止用)
+static RTC_DATA_ATTR uint32_t s_last_rain_sample_ts  = 0;   // 前回雨量加算時刻(Epoch: リセット多重加算防止用)
 static RTC_DATA_ATTR uint32_t s_cycle_count          = 0;   // 測定サイクル数
 
 static ble_status_t s_ble_status = {0}; // BLE通知用ステータス
@@ -147,6 +149,7 @@ static void run_ble_maintenance_mode(lushgate_config_t *cfg)
     s_ble_status.rain_accum_min = s_accumulated_rain_min;
     s_ble_status.pump_running   = pump_is_running();
     s_ble_status.last_water_day = s_last_water_day;
+    s_ble_status.last_water_ts  = s_last_water_epoch;
 
     ble_gatt_set_config_changed_cb(on_ble_config_changed);
     ble_gatt_set_pump_cmd_cb(on_ble_pump_cmd);
@@ -235,16 +238,33 @@ static void run_normal_monitoring_cycle(const lushgate_config_t *cfg)
     rain_sensor_result_t rain_res = {0};
     rain_sensor_read(cfg->adc_thresh_mv, &rain_res);
 
+    time_t now = time(NULL);
+    if (now >= 1700000000) {
+        s_rtc_latest_epoch = (uint32_t)now;
+    }
+
     if (rain_res.is_raining) {
         uint16_t add_min = (cfg->sleep_interval_sec >= 60) ? (cfg->sleep_interval_sec / 60) : 1;
-        s_accumulated_rain_min += add_min;
-        ESP_LOGI(TAG, "🌧️ Rain detected! Added %d min. 24h Accum: %d min", add_min, s_accumulated_rain_min);
+        // リセット直後の多重加算を防止 (前回加算からスリープ周期の半分以上経過している場合のみ加算)
+        uint32_t min_gap = (cfg->sleep_interval_sec >= 20) ? (cfg->sleep_interval_sec / 2) : 10;
+        if (now < 1700000000 || s_last_rain_sample_ts == 0 || (uint32_t)now < s_last_rain_sample_ts || ((uint32_t)now - s_last_rain_sample_ts) >= min_gap) {
+            if (s_accumulated_rain_min + add_min <= 1440) {
+                s_accumulated_rain_min += add_min;
+            } else {
+                s_accumulated_rain_min = 1440;
+            }
+            if (now >= 1700000000) {
+                s_last_rain_sample_ts = (uint32_t)now;
+            }
+            ESP_LOGI(TAG, "🌧️ Rain detected! Added %d min. 24h Accum: %d min", add_min, s_accumulated_rain_min);
+        } else {
+            ESP_LOGI(TAG, "🌧️ Rain detected (skipped duplicate add after reset). 24h Accum: %d min", s_accumulated_rain_min);
+        }
     } else {
         ESP_LOGI(TAG, "☀️ No rain detected. 24h Accum: %d min", s_accumulated_rain_min);
     }
 
     // 2. 時刻・散水スケジュール判定
-    time_t now = time(NULL);
     if (now < 1700000000) {
         ESP_LOGW(TAG, "RTC time is not synchronized (Epoch: %ld). Skipping scheduled watering.", (long)now);
         return;
@@ -305,21 +325,30 @@ static void run_normal_monitoring_cycle(const lushgate_config_t *cfg)
                      current_rain, cfg->rain_thresh_min);
             entry.result = WATER_RESULT_SKIPPED_RAIN;
             entry.pump_run_sec = 0;
+            storage_add_history(&entry);
         } else {
             ESP_LOGI(TAG, "🌱 Insufficient rain (%d min < %d min), STARTING watering sequence (%d sec)!",
                      current_rain, cfg->rain_thresh_min, cfg->pump_total_sec);
-            
-            // ポンプデューティ散水実行
-            pump_run_watering_cycle(cfg->pump_on_sec, cfg->pump_off_sec, cfg->pump_total_sec, NULL);
-            entry.result = WATER_RESULT_WATERED;
-            entry.pump_run_sec = cfg->pump_total_sec;
-        }
 
-        // 履歴をNVSに永続保存
-        storage_add_history(&entry);
+            // リレー突入電流でブラウンアウトリセットが発生しても履歴が消えないよう、開始前に暫定記録
+            entry.result = WATER_RESULT_ERROR;
+            entry.pump_run_sec = 0;
+            storage_add_history(&entry);
+
+            // ポンプデューティ散水実行
+            esp_err_t pump_err = pump_run_watering_cycle(cfg->pump_on_sec, cfg->pump_off_sec, cfg->pump_total_sec, NULL);
+            entry.result = (pump_err == ESP_OK) ? WATER_RESULT_WATERED : WATER_RESULT_ERROR;
+            entry.pump_run_sec = (pump_err == ESP_OK) ? cfg->pump_total_sec : 0;
+
+            // 散水完了後に履歴を正常完了へ更新
+            storage_update_latest_history(&entry);
+        }
 
         // 散水完了後の最新時刻でNVS状態を再更新
         time_t finished_now = time(NULL);
+        if (finished_now >= 1700000000) {
+            s_rtc_latest_epoch = (uint32_t)finished_now;
+        }
         storage_save_last_state((uint32_t)finished_now, s_accumulated_rain_min, s_last_water_day, s_last_water_epoch);
         s_last_nvs_backup_time = (uint32_t)finished_now;
     }
@@ -350,22 +379,43 @@ void app_main(void)
     bool time_is_valid = false;
     time_t now = time(NULL);
     if (now >= 1700000000) {
+        s_rtc_latest_epoch = (uint32_t)now;
         time_is_valid = true;
     } else {
         uint32_t saved_time = 0;
         uint16_t saved_rain = 0;
         uint8_t saved_water_day = 0xFF;
         uint32_t saved_water_epoch = 0;
-        if (storage_load_last_state(&saved_time, &saved_rain, &saved_water_day, &saved_water_epoch) == ESP_OK && saved_time >= 1700000000) {
-            struct timeval tv = { .tv_sec = (time_t)saved_time, .tv_usec = 0 };
+        esp_err_t load_err = storage_load_last_state(&saved_time, &saved_rain, &saved_water_day, &saved_water_epoch);
+        uint32_t restore_epoch = (load_err == ESP_OK) ? saved_time : 0;
+        // スリープ復帰時のブラウンアウトやWDTでリセットされた場合、直前のスリープ周期分を加算して時計の停止を防止
+        if (restore_epoch >= 1700000000 &&
+            (rst_reason == ESP_RST_BROWNOUT || rst_reason == ESP_RST_WDT || rst_reason == ESP_RST_TASK_WDT || rst_reason == ESP_RST_INT_WDT)) {
+            uint32_t sleep_comp = (config.sleep_interval_sec >= 5) ? config.sleep_interval_sec : 180;
+            restore_epoch += sleep_comp;
+        }
+        // RTCスローメモリにより新しい時刻が残っている場合はそちらを優先
+        if (s_rtc_latest_epoch > restore_epoch) {
+            restore_epoch = s_rtc_latest_epoch;
+        }
+        if (restore_epoch >= 1700000000) {
+            struct timeval tv = { .tv_sec = (time_t)restore_epoch, .tv_usec = 0 };
             settimeofday(&tv, NULL);
-            if (s_accumulated_rain_min == 0) s_accumulated_rain_min = saved_rain;
-            if (s_last_water_day == 0xFF)    s_last_water_day = saved_water_day;
-            if (s_last_water_epoch == 0)     s_last_water_epoch = saved_water_epoch;
-            s_last_nvs_backup_time = saved_time;
+            s_rtc_latest_epoch = restore_epoch;
+            if (load_err == ESP_OK) {
+                if (s_accumulated_rain_min == 0) s_accumulated_rain_min = saved_rain;
+                if (s_last_water_day == 0xFF)    s_last_water_day = saved_water_day;
+                if (s_last_water_epoch == 0)     s_last_water_epoch = saved_water_epoch;
+            }
+            // リセット補正後の時刻を即座にNVSへ保存（次回万一すぐリセットしても巻き戻らないようにする）
+            if (restore_epoch > saved_time) {
+                storage_save_last_state(restore_epoch, s_accumulated_rain_min, s_last_water_day, s_last_water_epoch);
+            }
+            s_last_nvs_backup_time = restore_epoch;
             time_is_valid = true;
-            ESP_LOGI(TAG, "✅ Restored RTC Time & Rain from NVS! (Epoch: %lu, Rain: %d min, LastDay: %d, LastEpoch: %lu)",
-                     (unsigned long)saved_time, s_accumulated_rain_min, s_last_water_day, (unsigned long)s_last_water_epoch);
+            ESP_LOGI(TAG, "✅ Restored RTC Time & Rain! (Epoch: %lu [NVS:%lu, Rst:%d], Rain: %d min, LastDay: %d, LastEpoch: %lu)",
+                     (unsigned long)restore_epoch, (unsigned long)saved_time, rst_reason,
+                     s_accumulated_rain_min, s_last_water_day, (unsigned long)s_last_water_epoch);
         } else {
             ESP_LOGW(TAG, "⚠️ RTC not synced yet. Starting BLE mode automatically for Web App setup...");
         }
@@ -374,12 +424,13 @@ void app_main(void)
     // 4. 初回起動時の動作決定
     //    ・時刻未同期なら自動でBLEモード起動
     //    ・起動時にBOOTボタン押下があれば即座にBLEモード起動
+    //    ・通常電源投入時(POWERON)のみ1.5秒間のボタン受付点滅を実施（WDT/Brownoutリセット時の無駄な電力消費を防止）
     bool enter_ble = false;
     if (!time_is_valid) {
         enter_ble = true;
     } else if (gpio_get_level(PIN_USER_BUTTON) == BUTTON_PRESSED_LEVEL) {
         enter_ble = true;
-    } else {
+    } else if (rst_reason == ESP_RST_POWERON || rst_reason == ESP_RST_EXT) {
         enter_ble = check_boot_window_button();
     }
 
@@ -392,6 +443,7 @@ void app_main(void)
             // 設定画面から抜けた直後、最新の時刻・雨量を即座にNVSバックアップ
             now = time(NULL);
             if (now >= 1700000000) {
+                s_rtc_latest_epoch = (uint32_t)now;
                 storage_save_last_state((uint32_t)now, s_accumulated_rain_min, s_last_water_day, s_last_water_epoch);
                 s_last_nvs_backup_time = (uint32_t)now;
             }
@@ -404,10 +456,12 @@ void app_main(void)
         rain_sensor_power_down();
         pump_set_state(false);
 
-        // NVSへのスマートバックアップ (15分おき、または雨量変化時)
+        // NVSへのバックアップ (晴天・雨天を問わず毎スリープ周期ごとに保存し、リセット時の時計巻き戻りを完全防止)
+        uint32_t sleep_sec = (config.sleep_interval_sec >= 5) ? config.sleep_interval_sec : 180;
         now = time(NULL);
         if (now >= 1700000000) {
-            if ((now - s_last_nvs_backup_time >= 900) || (s_accumulated_rain_min > 0 && (now - s_last_nvs_backup_time >= 180))) {
+            s_rtc_latest_epoch = (uint32_t)now;
+            if (s_last_nvs_backup_time == 0 || (uint32_t)now < s_last_nvs_backup_time || ((uint32_t)now - s_last_nvs_backup_time >= sleep_sec)) {
                 storage_save_last_state((uint32_t)now, s_accumulated_rain_min, s_last_water_day, s_last_water_epoch);
                 s_last_nvs_backup_time = (uint32_t)now;
             }
@@ -415,15 +469,24 @@ void app_main(void)
 
         // --- Light Sleep の設定 ---
         // A. タイマー復帰 (デフォルト180秒 = 3分)
-        uint64_t sleep_us = (uint64_t)config.sleep_interval_sec * 1000000ULL;
-        if (sleep_us < 5000000ULL) sleep_us = 180ULL * 1000000ULL;
+        uint64_t sleep_us = (uint64_t)sleep_sec * 1000000ULL;
         esp_sleep_enable_timer_wakeup(sleep_us);
 
-        // B. BOOTボタン (GPIO9 LOW) による即時復帰
-        gpio_wakeup_enable(PIN_USER_BUTTON, GPIO_INTR_LOW_LEVEL);
-        esp_sleep_enable_gpio_wakeup();
+        // スリープ復帰直後のWDTリセット等に備え、スリープ予定時刻をRTCスローメモリへ先行記録
+        if (now >= 1700000000) {
+            s_rtc_latest_epoch = (uint32_t)now + sleep_sec;
+        }
 
-        ESP_LOGI(TAG, "Entering Light Sleep (%d sec)... [Press BOOT button anytime for BLE Mode]", config.sleep_interval_sec);
+        // B. BOOTボタン (GPIO9 LOW) による即時復帰 (結露等で既にLOW張り付きの場合は無限起床ループ防止のためスキップ)
+        bool btn_stuck_low = (gpio_get_level(PIN_USER_BUTTON) == BUTTON_PRESSED_LEVEL);
+        if (!btn_stuck_low) {
+            gpio_wakeup_enable(PIN_USER_BUTTON, GPIO_INTR_LOW_LEVEL);
+            esp_sleep_enable_gpio_wakeup();
+        } else {
+            ESP_LOGW(TAG, "BOOT button is held LOW before sleep; disabling GPIO wakeup for this cycle.");
+        }
+
+        ESP_LOGI(TAG, "Entering Light Sleep (%lu sec)... [Press BOOT button anytime for BLE Mode]", (unsigned long)sleep_sec);
         fflush(stdout);
         uart_wait_tx_idle_polling(0);
 
@@ -434,15 +497,23 @@ void app_main(void)
         gpio_wakeup_disable(PIN_USER_BUTTON);
         esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
 
+        // スリープ復帰後の実時刻でRTCスローメモリを更新
+        now = time(NULL);
+        if (now >= 1700000000) {
+            s_rtc_latest_epoch = (uint32_t)now;
+        }
+
         // --- 目覚めた後の処理 ---
         esp_sleep_wakeup_cause_t wake_reason = esp_sleep_get_wakeup_cause();
         ESP_LOGI(TAG, "Woke up from Light Sleep, reason: %d", wake_reason);
 
-        // ボタン押下で起きた場合は次回ループでBLEモード起動
-        if (wake_reason == ESP_SLEEP_WAKEUP_GPIO || gpio_get_level(PIN_USER_BUTTON) == BUTTON_PRESSED_LEVEL) {
-            ESP_LOGI(TAG, "🔘 Woken up by BOOT button! Entering BLE Mode...");
-            vTaskDelay(pdMS_TO_TICKS(50)); // チャタリング防止
-            enter_ble = true;
+        // ボタン押下で起きた場合はチャタリング・ノイズ確認後に次回ループでBLEモード起動
+        if (!btn_stuck_low && (wake_reason == ESP_SLEEP_WAKEUP_GPIO || gpio_get_level(PIN_USER_BUTTON) == BUTTON_PRESSED_LEVEL)) {
+            vTaskDelay(pdMS_TO_TICKS(50)); // チャタリング・瞬間ノイズ除去
+            if (gpio_get_level(PIN_USER_BUTTON) == BUTTON_PRESSED_LEVEL || wake_reason == ESP_SLEEP_WAKEUP_GPIO) {
+                ESP_LOGI(TAG, "🔘 Woken up by BOOT button! Entering BLE Mode...");
+                enter_ble = true;
+            }
         }
     }
 }

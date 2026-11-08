@@ -138,7 +138,10 @@ static int gatt_timesync_write_cb(uint16_t conn_handle, uint16_t attr_handle,
     settimeofday(&tv, NULL);
     setenv("TZ", "JST-9", 1);
     tzset();
-    ESP_LOGI(TAG, "RTC time synchronized via BLE: %lu (JST set)", (unsigned long)epoch);
+    if (s_status && epoch >= 1700000000) {
+        storage_save_last_state(epoch, s_status->rain_accum_min, s_status->last_water_day, s_status->last_water_ts);
+    }
+    ESP_LOGI(TAG, "RTC time synchronized via BLE: %lu (JST set & NVS saved)", (unsigned long)epoch);
 
     ble_gatt_notify_status();
     return 0;

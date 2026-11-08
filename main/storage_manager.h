@@ -46,6 +46,7 @@ esp_err_t storage_save_last_state(uint32_t timestamp, uint16_t rain_accum_min, u
 esp_err_t storage_load_last_state(uint32_t *timestamp, uint16_t *rain_accum_min, uint8_t *last_water_day, uint32_t *last_water_epoch);
 
 esp_err_t storage_add_history(const water_history_entry_t *entry);
+esp_err_t storage_update_latest_history(const water_history_entry_t *entry);
 uint16_t  storage_get_history_count(void);
 esp_err_t storage_get_history_entry(uint16_t index, water_history_entry_t *entry);
 esp_err_t storage_clear_history(void);

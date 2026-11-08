@@ -207,6 +207,24 @@ esp_err_t storage_add_history(const water_history_entry_t *entry)
     return save_history_to_nvs();
 }
 
+esp_err_t storage_update_latest_history(const water_history_entry_t *entry)
+{
+    if (!entry) return ESP_ERR_INVALID_ARG;
+    if (!s_history_loaded) storage_init();
+    if (s_history_store.count == 0) {
+        return storage_add_history(entry);
+    }
+
+    int pos = (int)s_history_store.head - 1;
+    if (pos < 0) pos += MAX_HISTORY_ENTRIES;
+    s_history_store.entries[pos] = *entry;
+
+    ESP_LOGI(TAG, "Updated latest history entry. Result: %d, RainAccum: %dm, PumpRun: %ds",
+             entry->result, entry->rain_accum_min, entry->pump_run_sec);
+
+    return save_history_to_nvs();
+}
+
 uint16_t storage_get_history_count(void)
 {
     return s_history_store.count;

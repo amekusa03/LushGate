@@ -28,7 +28,9 @@ CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
 CONFIG_BT_NIMBLE_LOG_LEVEL=1
 
 # ============================================
-# カスタムパーティションテーブル
+# カスタムパーティションテーブル & 乾電池駆動向けブラウンアウト閾値緩和
 # ============================================
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_ESP_BROWNOUT_DET_LVL_SEL_2=y
+CONFIG_ESP_BROWNOUT_DET_LVL=2
