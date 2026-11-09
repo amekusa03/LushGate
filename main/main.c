@@ -77,7 +77,7 @@ static void init_hardware(const lushgate_config_t *cfg)
 
     // センサー＆ポンプドライバ初期化
     rain_sensor_init();
-    pump_init(cfg->pump_active_level);
+    pump_init(config_get_pump_level(cfg));
 }
 
 /* 起動時のBOOTボタン確認（1.5秒間のLED点滅中に押下でBLEモード） */
@@ -101,10 +101,11 @@ static bool check_boot_window_button(void)
 /* BLE コールバック関数 */
 static void on_ble_config_changed(const lushgate_config_t *new_cfg)
 {
-    ESP_LOGI(TAG, "BLE Config Updated: Sched=%02d:%02d, RainThresh=%dm, Pump=%ds",
+    ESP_LOGI(TAG, "BLE Config Updated: Sched=%02d:%02d (SeasonalAuto=%d), RainThresh=%dm, AdcThresh=%dmV, Pump=%ds",
              new_cfg->sched_hour, new_cfg->sched_min,
-             new_cfg->rain_thresh_min, new_cfg->pump_total_sec);
-    pump_set_active_level(new_cfg->pump_active_level);
+             config_is_seasonal_auto(new_cfg) ? 1 : 0,
+             new_cfg->rain_thresh_min, new_cfg->adc_thresh_mv, new_cfg->pump_total_sec);
+    pump_set_active_level(config_get_pump_level(new_cfg));
 }
 
 static void on_ble_pump_cmd(uint8_t cmd, uint16_t duration_sec)
@@ -273,8 +274,12 @@ static void run_normal_monitoring_cycle(const lushgate_config_t *cfg)
     localtime_r(&now, &timeinfo);
 
     // 散水時刻ウィンドウ判定 (スリープ周期分だけ許容して見逃しを防止)
-    // 例: 3分サイクルなら「7:00〜7:02」の間に起動すれば実行される
-    int sched_total_min = (int)cfg->sched_hour * 60 + (int)cfg->sched_min;
+    // 季節オートモード時は月(1〜12月)から最適時刻(夏07:00 / 春秋08:30 / 冬10:00)を算出
+    uint8_t eff_hour = cfg->sched_hour;
+    uint8_t eff_min  = cfg->sched_min;
+    config_get_effective_schedule(cfg, timeinfo.tm_mon + 1, &eff_hour, &eff_min);
+
+    int sched_total_min = (int)eff_hour * 60 + (int)eff_min;
     int cur_total_min   = (int)timeinfo.tm_hour * 60 + (int)timeinfo.tm_min;
     int diff_min        = cur_total_min - sched_total_min;
     if (diff_min < 0) diff_min += 1440;
@@ -288,9 +293,11 @@ static void run_normal_monitoring_cycle(const lushgate_config_t *cfg)
     bool within_20h = (s_last_water_epoch > 0 && (now >= s_last_water_epoch) && ((now - s_last_water_epoch) < 72000));
 
     // ★詳細ログ (毎サイクル出力してデバッグ可能にする)★
-    ESP_LOGI(TAG, "TimeCheck: now=%02d:%02d sched=%02d:%02d diff=%d | AlreadyWatered=%d(Day:%d/Last:%d) Within20h=%d(LastEpoch:%lu)",
+    ESP_LOGI(TAG, "TimeCheck: now=%02d:%02d sched=%02d:%02d(%s) diff=%d | AlreadyWatered=%d(Day:%d/Last:%d) Within20h=%d(LastEpoch:%lu)",
              timeinfo.tm_hour, timeinfo.tm_min,
-             (int)cfg->sched_hour, (int)cfg->sched_min, diff_min,
+             (int)eff_hour, (int)eff_min,
+             config_is_seasonal_auto(cfg) ? "Seasonal" : "Manual",
+             diff_min,
              already_watered_today, timeinfo.tm_mday, s_last_water_day,
              within_20h, (unsigned long)s_last_water_epoch);
 
@@ -465,12 +472,12 @@ void app_main(void)
         rain_sensor_power_down();
         pump_set_state(false);
 
-        // NVSへのバックアップ (晴天・雨天を問わず毎スリープ周期ごとに保存し、リセット時の時計巻き戻りを完全防止)
+        // NVSへの定期バックアップ (RTCメモリは毎周期更新しつつ、Flash書き込みスパイク電流を抑えるため30分間隔でNVS保存)
         uint32_t sleep_sec = (config.sleep_interval_sec >= 5) ? config.sleep_interval_sec : 180;
         now = time(NULL);
         if (now >= 1700000000) {
             s_rtc_latest_epoch = (uint32_t)now;
-            if (s_last_nvs_backup_time == 0 || (uint32_t)now < s_last_nvs_backup_time || ((uint32_t)now - s_last_nvs_backup_time >= sleep_sec)) {
+            if (s_last_nvs_backup_time == 0 || (uint32_t)now < s_last_nvs_backup_time || ((uint32_t)now - s_last_nvs_backup_time >= 1800)) {
                 storage_save_last_state((uint32_t)now, s_accumulated_rain_min, s_last_water_day, s_last_water_epoch);
                 s_last_nvs_backup_time = (uint32_t)now;
             }

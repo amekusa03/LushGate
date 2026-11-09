@@ -119,8 +119,8 @@ esp_err_t rain_sensor_read(uint16_t threshold_mv, rain_sensor_result_t *result)
     result->raw_adc = (uint16_t)raw_val;
     result->voltage_mv = (uint16_t)voltage_mv;
 
-    // 6. 雨判定: 雨なし(乾燥) 約4mV / 雨あり(濡れ) 約180mV のため、閾値以上で「雨検知」
-    // (デフォルト閾値: 500mV。60mV以上なら雨あり)
+    // 6. 雨判定: 雨なし(乾燥) ~60mV未満 / 雨あり(濡れ) 約180mV以上 のため、閾値以上で「雨検知」
+    // (デフォルト閾値: 120mV)
     result->is_raining = (result->voltage_mv >= threshold_mv);
 
     ESP_LOGI(TAG, "Rain Sensor Read: Raw=%d, Volt=%dmV, IsRaining=%s (Thresh>=%dmV)",

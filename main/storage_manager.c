@@ -9,6 +9,7 @@ static const char *TAG = "STORAGE";
 #define NVS_NAMESPACE_HISTORY "lush_hist"
 
 #define KEY_CONFIG_BLOB       "cfg_blob"
+#define KEY_ADC_MIG_120       "adc_mig120"
 #define KEY_HIST_BLOB         "hist_blob"
 #define KEY_LAST_STATE        "last_state"
 
@@ -37,7 +38,7 @@ void storage_get_default_config(lushgate_config_t *config)
     config->sched_hour         = 7;   // 毎朝7時
     config->sched_min          = 0;
     config->rain_thresh_min    = 60;  // 60分
-    config->adc_thresh_mv      = 60;
+    config->adc_thresh_mv      = 120; // 120mV
     config->pump_on_sec        = 180; // 3分ON
     config->pump_off_sec       = 120; // 2分OFF
     config->pump_total_sec     = 600; // 10分 (正味)
@@ -83,7 +84,7 @@ esp_err_t storage_load_config(lushgate_config_t *config)
     storage_get_default_config(config);
 
     nvs_handle_t h;
-    esp_err_t err = nvs_open(NVS_NAMESPACE_CONFIG, NVS_READONLY, &h);
+    esp_err_t err = nvs_open(NVS_NAMESPACE_CONFIG, NVS_READWRITE, &h);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "Config not found in NVS, using defaults");
         return ESP_OK;
@@ -91,16 +92,30 @@ esp_err_t storage_load_config(lushgate_config_t *config)
 
     size_t size = sizeof(lushgate_config_t);
     err = nvs_get_blob(h, KEY_CONFIG_BLOB, config, &size);
-    nvs_close(h);
 
     if (err != ESP_OK || size != sizeof(lushgate_config_t)) {
+        nvs_close(h);
         ESP_LOGW(TAG, "Config blob invalid, keeping defaults");
         storage_get_default_config(config);
         return ESP_OK;
     }
 
-    ESP_LOGI(TAG, "Config loaded successfully. Schedule: %02d:%02d, RainThresh: %dm, PumpTotal: %ds",
-             config->sched_hour, config->sched_min, config->rain_thresh_min, config->pump_total_sec);
+    // 旧デフォルト閾値(60mV)が保存されている既存機を新デフォルト(120mV)へ初回自動移行
+    uint8_t migrated = 0;
+    if (nvs_get_u8(h, KEY_ADC_MIG_120, &migrated) != ESP_OK || migrated == 0) {
+        if (config->adc_thresh_mv == 60) {
+            config->adc_thresh_mv = 120;
+            nvs_set_blob(h, KEY_CONFIG_BLOB, config, sizeof(lushgate_config_t));
+            ESP_LOGI(TAG, "Migrated adc_thresh_mv from old default 60mV to 120mV");
+        }
+        nvs_set_u8(h, KEY_ADC_MIG_120, 1);
+        nvs_commit(h);
+    }
+    nvs_close(h);
+
+    ESP_LOGI(TAG, "Config loaded successfully. Schedule: %02d:%02d (SeasonalAuto:%d), RainThresh: %dm, AdcThresh: %dmV, PumpTotal: %ds",
+             config->sched_hour, config->sched_min, config_is_seasonal_auto(config) ? 1 : 0,
+             config->rain_thresh_min, config->adc_thresh_mv, config->pump_total_sec);
     return ESP_OK;
 }
 

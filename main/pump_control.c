@@ -22,14 +22,14 @@ static void manual_stop_callback(void* arg)
 
 void pump_set_active_level(uint8_t active_level)
 {
-    s_active_level = active_level ? 1 : 0;
+    s_active_level = (active_level & 0x01) ? 1 : 0;
     ESP_LOGI(TAG, "Pump active level set to: %d (%s)", s_active_level, s_active_level ? "Active High" : "Active Low");
     pump_set_state(s_is_running);
 }
 
 esp_err_t pump_init(uint8_t active_level)
 {
-    s_active_level = active_level ? 1 : 0;
+    s_active_level = (active_level & 0x01) ? 1 : 0;
     
     // 安全のため、初期化前にピンをOFFレベルに設定してから出力設定
     uint32_t off_level = (1 - s_active_level);

@@ -302,7 +302,17 @@ input[type=time]{color-scheme:dark}
   <div class="card">
     <div class="card-title"><span class="ti">⏰</span>散水スケジュール</div>
     <div class="form-group">
-      <label>散水開始時刻</label>
+      <label>散水時刻モード</label>
+      <select id="cfg-seasonal-mode" onchange="updateSeasonalModeUI()">
+        <option value="1">🌱 季節オート (夏07:00 / 春秋08:30 / 冬10:00) ← デフォルト</option>
+        <option value="0">🕒 手動 (指定時刻に固定)</option>
+      </select>
+      <div id="seasonal-info-box" style="margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(16,185,129,.12);color:var(--accent);font-size:.8rem;line-height:1.4">
+        📅 季節に応じて植物と電池に最適な時刻へ自動シフトします
+      </div>
+    </div>
+    <div class="form-group" id="manual-time-group">
+      <label>散水開始時刻 (手動固定時)</label>
       <input type="time" id="cfg-sched-time" value="07:00">
     </div>
     <div class="form-group">
@@ -329,7 +339,7 @@ input[type=time]{color-scheme:dark}
     </div>
     <div class="form-group">
       <label>雨滴センサー閾値 (mV)</label>
-      <input type="number" id="cfg-adc-thresh" value="60" min="0" max="3300">
+      <input type="number" id="cfg-adc-thresh" value="120" min="0" max="3300">
     </div>
   </div>
   <div class="card">
@@ -722,8 +732,11 @@ function readConfig() {
     document.getElementById('cfg-pump-off').value       = dv.getUint16(10, true);
     document.getElementById('cfg-pump-total').value     = dv.getUint16(12, true);
     document.getElementById('cfg-ap-timeout').value     = dv.getUint16(14, true);
-    document.getElementById('cfg-pump-active-level').value = dv.getUint8(16);
+    const rawMode = dv.getUint8(16);
+    document.getElementById('cfg-pump-active-level').value = rawMode & 0x01;
+    document.getElementById('cfg-seasonal-mode').value     = (rawMode & 0x80) ? '0' : '1';
 
+    updateSeasonalModeUI();
     updateRainBar();
     addLog('設定を読み込みました', 'ok');
     showToast('設定を読み込みました ✅', 'ok');
@@ -732,6 +745,28 @@ function readConfig() {
     showToast('設定読み込みに失敗', 'err');
   });
 }
+
+function updateSeasonalModeUI() {
+  const isAuto = document.getElementById('cfg-seasonal-mode').value === '1';
+  const infoBox = document.getElementById('seasonal-info-box');
+  const timeInput = document.getElementById('cfg-sched-time');
+  const m = new Date().getMonth() + 1;
+  let seasonLabel = '冬時間 (11〜3月): 10:00';
+  if (m >= 6 && m <= 8) seasonLabel = '夏時間 (6〜8月): 07:00';
+  else if (m === 4 || m === 5 || m === 9 || m === 10) seasonLabel = '春秋時間 (4〜5・9〜10月): 08:30';
+
+  if (isAuto) {
+    infoBox.style.display = 'block';
+    infoBox.innerHTML = `📅 現在の適用時刻 [${m}月・${seasonLabel}]<br><span style="color:var(--muted);font-size:.75rem">6〜8月: 07:00 ／ 4〜5・9〜10月: 08:30 ／ 11〜3月: 10:00</span>`;
+    timeInput.disabled = true;
+    timeInput.style.opacity = '0.5';
+  } else {
+    infoBox.style.display = 'none';
+    timeInput.disabled = false;
+    timeInput.style.opacity = '1';
+  }
+}
+updateSeasonalModeUI();
 
 function updateRainBar() {
   const val = parseInt(document.getElementById('cfg-rain-thresh').value) || 0;
@@ -754,12 +789,14 @@ async function writeConfig() {
   dv.setUint8 (2,  schedH);
   dv.setUint8 (3,  schedM);
   dv.setUint16(4,  parseInt(document.getElementById('cfg-rain-thresh').value) || 60, true);
-  dv.setUint16(6,  parseInt(document.getElementById('cfg-adc-thresh').value)  || 60, true);
+  dv.setUint16(6,  parseInt(document.getElementById('cfg-adc-thresh').value)  || 120, true);
   dv.setUint16(8,  parseInt(document.getElementById('cfg-pump-on').value)    || 180, true);
   dv.setUint16(10, parseInt(document.getElementById('cfg-pump-off').value)   || 120, true);
   dv.setUint16(12, parseInt(document.getElementById('cfg-pump-total').value) || 600, true);
   dv.setUint16(14, parseInt(document.getElementById('cfg-ap-timeout').value) || 300, true);
-  dv.setUint8 (16, parseInt(document.getElementById('cfg-pump-active-level').value));
+  const activeLv = parseInt(document.getElementById('cfg-pump-active-level').value) & 0x01;
+  const isSeasonal = document.getElementById('cfg-seasonal-mode').value === '1';
+  dv.setUint8 (16, activeLv | (isSeasonal ? 0x00 : 0x80));
   // ap_ssid, ap_pass は読み込んだ値を保持するため0埋め (変更なし)
 
   try {
